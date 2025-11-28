@@ -83,10 +83,24 @@ void PSO_LEDBlueOff (void)
 {
     GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_2, 0x08);
 }
+
+/* Toggle red LED */
+void led_red_toggle (void)
+{
+    GPIO_PORTF_DATA_R ^= GPIO_PIN_1;    /* Toggle red LED */
+}
+
 /* Toggle blue LED */
 void led_blue_toggle (void)
 {
-	GPIO_PORTF_DATA_R ^= GPIO_PIN_2;    /* Turn on red LED */
+    GPIO_PORTF_DATA_R ^= GPIO_PIN_2;    /* Turn on blue LED */
+}
+
+
+/* Toggle green LED */
+void led_green_toggle (void)
+{
+	GPIO_PORTF_DATA_R ^= GPIO_PIN_3;    /* Turn on green LED */
 }
 
 

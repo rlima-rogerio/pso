@@ -32,17 +32,17 @@ void sd_ok(void);
 void sd_finish_record(void);
 void sd_error(void);
 
-/*******************************************************************************
- * ENUMERATIONS
- ******************************************************************************/
-typedef enum {
-    SYS_STATE_WAIT_SW1 = 0U,           /* Waits for SW1 be pressed */
-    SYS_STATE_SD_INIT = 1U,            /* Starts SD card and register FatFs work area */
-    SYS_STATE_RECORDING = 2U,          /* Starts to fill fifos and write data to the memory */
-    SYS_STATE_CLOSE_FILE = 3U,         /* Close file and unmount SD card */
-    SYS_STATE_FINISH = 4U,             /* Finish recording indication */
-    SYS_STATE_SD_ERROR = 5U            /* SD error state */
-} sys_state_t;
+///*******************************************************************************
+// * ENUMERATIONS
+// ******************************************************************************/
+//typedef enum {
+//    SYS_STATE_WAIT_SW1 = 0U,           /* Waits for SW1 be pressed */
+//    SYS_STATE_SD_INIT = 1U,            /* Starts SD card and register FatFs work area */
+//    SYS_STATE_RECORDING = 2U,          /* Starts to fill fifos and write data to the memory */
+//    SYS_STATE_CLOSE_FILE = 3U,         /* Close file and unmount SD card */
+//    SYS_STATE_FINISH = 4U,             /* Finish recording indication */
+//    SYS_STATE_SD_ERROR = 5U            /* SD error state */
+//} sys_state_t;
 
 /*******************************************************************************
  * DEFINES
@@ -136,7 +136,14 @@ int main(void)
 
         if (g_timer_a0_scan_flag)
         {
-            g_timer_a0_scan_flag = 0U;
+            g_timer_a0_scan_flag = 0U;typedef enum {
+                SYS_STATE_WAIT_SW1 = 0U,           /* Waits for SW1 be pressed */
+                SYS_STATE_SD_INIT = 1U,            /* Starts SD card and register FatFs work area */
+                SYS_STATE_RECORDING = 2U,          /* Starts to fill fifos and write data to the memory */
+                SYS_STATE_CLOSE_FILE = 3U,         /* Close file and unmount SD card */
+                SYS_STATE_FINISH = 4U,             /* Finish recording indication */
+                SYS_STATE_SD_ERROR = 5U            /* SD error state */
+            } sys_state_t;
 
             packet_data(&dp);
             copy_data(uart_tx_buffer, &dp);
