@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include <string.h>
 #include "tm4c123gh6pm.h"   /* Interrupt and register assignments on the Tiva C LauchPad board */
 #include "hw_memmap.h"      /* Macros defining the memory map of the device. */
 #include "hw_types.h"       /* Macros for hardware access, direct and via the bit-band region. */
@@ -25,6 +26,12 @@
 #include "ulink.h"
 #include "ulink_types.h"
 
+/* FIX: if these functions are not declared in any header, declare them here */
+void sd_stand_by(void);
+void sd_ok(void);
+void sd_finish_record(void);
+void sd_error(void);
+
 /*******************************************************************************
  * ENUMERATIONS
  ******************************************************************************/
@@ -40,7 +47,7 @@ typedef enum {
 /*******************************************************************************
  * DEFINES
  ******************************************************************************/
-#define PART_TM4C123GH6PM    /* Used for Port/Pin Mapping Definitions defined in "pin_map.h" */
+//#define PART_TM4C123GH6PM    /* Used for Port/Pin Mapping Definitions defined in "pin_map.h" */
 #define PWM_FREQUENCY  50
 #define BUFFERSIZE16KB 16384
 #define SD_FINISH_ITERATIONS 10U
@@ -83,10 +90,14 @@ uint8_t state = 0U;               /* FIFO FSM */
 uint8_t fix_rpm_start_acq = 0U;   /* Flag to fix RPM and start of acq. */
 bool b_aux;
 
+/* FIX: make enable_fifo_write global, since multiple functions use it */
+uint8_t enable_fifo_write = 1U;
+
 /*******************************************************************************
  * FUNCTION PROTOTYPES
  ******************************************************************************/
 static void system_init(void);
+/* FIX: remove parameter; we’ll use global enable_fifo_write instead */
 static void handle_sd_recording(void);
 static void handle_buffer_filling(uint16_t *k, sys_state_t sys_state);
 static sys_state_t fsm_state_wait_sw1(void);
@@ -103,7 +114,8 @@ int main(void)
 {
     static uint16_t k = 0U;
     uint8_t percent = 0U;
-    uint8_t enable_fifo_write = 1U;
+    /* FIX: remove local enable_fifo_write; now using global one */
+    /* uint8_t enable_fifo_write = 1U; */
     uint8_t ret_func = 0U;
     sys_state_t sys_state = SYS_STATE_WAIT_SW1;
 
@@ -130,6 +142,7 @@ int main(void)
             copy_data(uart_tx_buffer, &dp);
 
             /* Recording data to the SD card */
+            /* FIX: now matches prototype (no arguments) */
             handle_sd_recording();
 
             /* System Finite State Machine (FSM) */
@@ -209,6 +222,7 @@ static void system_init(void)
 /**
  * @brief Handle SD card recording process
  */
+/* FIX: removed stray ';' and parameter */
 static void handle_sd_recording(void)
 {
     UINT bw_local;
@@ -249,6 +263,7 @@ static void handle_buffer_filling(uint16_t *k, sys_state_t sys_state)
     else if (sys_state && fix_rpm_start_acq)
     {
         fix_rpm_start_acq = 0U;
+        /* FIX: enable_fifo_write is now global, so this compiles */
         enable_fifo_write = 0U;
         sys_state = SYS_STATE_SD_INIT;
         record_sd = 1U;

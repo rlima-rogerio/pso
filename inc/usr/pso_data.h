@@ -30,5 +30,7 @@ uint8_t read_raw_data (uart_raw_data_t* g_uart0_data);
 //    SYS_STATE_FINISH = 4U,             /* Finish recording indication */
 //    SYS_STATE_SD_ERROR = 5U            /* SD error state */
 //} sys_state_t;
-//
-//#endif /* PSO_DATA_H_ */
+
+
+
+#endif /* PSO_DATA_H_ */

@@ -99,20 +99,20 @@ void WTimer1AIntHandler(void)
 void WTimer1BIntHandler(void)
 {
 	// Clear the timer interrupt
-	ROM_TimerIntClear(WTIMER1_BASE, TIMER_CAPB_EVENT);
+	TimerIntClear(WTIMER1_BASE, TIMER_CAPB_EVENT);
 }
 
 void WTimer5AIntHandler(void)
 {
 	// Clear the timer interrupt
-	ROM_TimerIntClear(WTIMER5_BASE, TIMER_CAPA_EVENT);
+	TimerIntClear(WTIMER5_BASE, TIMER_CAPA_EVENT);
 }
 
 
 void WTimer5BIntHandler(void)
 {
 	// Clear the timer interrupt
-	ROM_TimerIntClear(WTIMER5_BASE, TIMER_CAPB_EVENT);
+	TimerIntClear(WTIMER5_BASE, TIMER_CAPB_EVENT);
 
 }
 
