@@ -1,18 +1,12 @@
 /******************************************************************************
-* FILENAME:    led.c
+* FILENAME:    pso_pwm.c
 *
 * DESCRIPTION:
 *       Functions to turn on/off the three LEDs.
 *
 * FUNCTIONS:
-*    void LEDRedOn    (void);
-*    void LEDRedOff   (void);
-*    void LEDGreenOn  (void);
-*    void LEDGreenOff (void);
-*    void LEDBlueOn   (void);
-*    void LEDBlueOff  (void);
-*    void LEDWhiteOn  (void);
-*    void LEDWhiteOff (void);
+*    uint8_t set_pwm_position(uint8_t pos);
+
 *
 * NOTES:
 *       None.
@@ -26,6 +20,7 @@
 *
 * VERSION DATE        WHO                    DETAIL
 * 1.0     16 Aug 2015 Rogerio Lima         Start-up coding.
+* 1.1     29 Nov 2025 Rogerio Lima 		   Fixing code
 *
 * -----------------------------------------------------------------------------
 * 2.0
@@ -49,11 +44,78 @@
 #include "tm4c123gh6pm.h"	/* Interrupt and register assignments on the Tiva C LauchPad board */
 #include "pso_pwm.h"
 
+/*****************************************************************************
+ * PWM TIMING MACROS (25ns clock period)
+ *****************************************************************************/
+#define PWM_MIN_PULSE_WIDTH_US      1000U   /* 1.0 ms minimum pulse width */
+#define PWM_MID_PULSE_WIDTH_US      1500U   /* 1.5 ms mid pulse width */
+#define PWM_MAX_PULSE_WIDTH_US      2000U   /* 2.0 ms maximum pulse width */
+#define PWM_CLOCK_PERIOD_NS         25U     /* 25 ns clock period */
+
+/* Convert microseconds to timer counts */
+#define US_TO_COUNTS(us)            ((us) * 1000U / PWM_CLOCK_PERIOD_NS)
+
+#define PWM_MIN_DUTY_CYCLE          US_TO_COUNTS(PWM_MIN_PULSE_WIDTH_US)  /* 40000 */
+#define PWM_MID_DUTY_CYCLE          US_TO_COUNTS(PWM_MID_PULSE_WIDTH_US)  /* 60000 */
+#define PWM_MAX_DUTY_CYCLE          US_TO_COUNTS(PWM_MAX_PULSE_WIDTH_US)  /* 80000 */
+
+/* PWM position limits */
+#define PWM_POSITION_MIN            0U
+#define PWM_POSITION_MAX            100U
+
+/* Calculate duty cycle from position (0-100%) */
+#define PWM_DUTY_FROM_POSITION(pos) ((400U * (pos)) + PWM_MIN_DUTY_CYCLE)
+
+/*****************************************************************************
+ * TRAPEZOID FUNCTION STATE MACHINE MACROS
+ *****************************************************************************/
+#define TRAP_STATE_INIT             0U
+#define TRAP_STATE_RAMP_START       1U
+#define TRAP_STATE_STEP_10          2U
+#define TRAP_STATE_STEP_20          3U
+#define TRAP_STATE_STEP_30          4U
+#define TRAP_STATE_STEP_40          5U
+#define TRAP_STATE_STEP_50          6U
+#define TRAP_STATE_STEP_60          7U
+#define TRAP_STATE_STEP_70          8U
+#define TRAP_STATE_STEP_80          9U
+#define TRAP_STATE_STEP_90          10U
+#define TRAP_STATE_RAMP_DOWN        11U
+#define TRAP_STATE_COMPLETE         12U
+
+/* Trapezoid timing parameters */
+#define TRAP_RAMP_START_TIME        3U      /* Initial ramp time */
+#define TRAP_STEP_HOLD_TIME         2U      /* Time to hold each step */
+#define TRAP_RAMP_DOWN_TIME         3U      /* Final ramp down time */
+
+#define TRAP_THROTTLE_STEP          10U     /* Throttle increment per step */
+#define TRAP_THROTTLE_MIN           0U
+#define TRAP_THROTTLE_MAX           100U
+
+/*****************************************************************************
+ * RETURN VALUE MACROS
+ *****************************************************************************/
+#define FUNCTION_SUCCESS            1U
+#define FUNCTION_IN_PROGRESS        0U
+#define FUNCTION_FAIL               0U
+
+/*****************************************************************************
+ * HELPER MACROS
+ *****************************************************************************/
+#define RESET_COUNTER()             (inc = 0U)
+#define SET_RPM_FLAG()              (fix_rpm_start_acq = 1U)
+#define TRANSITION_TO_NEXT_STATE(next_state) \
+    do { \
+        state = (next_state); \
+        RESET_COUNTER(); \
+        SET_RPM_FLAG(); \
+    } while(0)
+
+
 uint8_t pwm_throttle = 0U;
 extern uint8_t fix_rpm_start_acq;       /* Flag to fix RPM and start of acq. */
 
-static volatile
-uint16_t inc, dec;    /* 100Hz decrement timer */
+static volatile uint16_t inc, dec;      /* 100Hz increment/decrement timer */
 
 /* Turn off buzzer */
 
@@ -65,50 +127,42 @@ uint16_t inc, dec;    /* 100Hz decrement timer */
 * Description    : Defines the position (servo) or throttle (ESC) in a percen-
 *                  tual scale from 0 to 100.
 *******************************************************************************/
-uint8_t set_pwm_position (uint8_t pos)
+uint8_t set_pwm_position(uint8_t pos)
 {
-	uint32_t duty_cycle;
-	uint8_t returnval;
-    /**************************************************************************
-    * Minimum -> 1.0 ms : 1.0ms / 25ns = 40000 = 0x0000.9C40
-    * Mid     -> 1.5 ms : 1.5ms / 25ns = 60000 = 0x0000.EA60
-    * Maximum -> 2.0 ms : 2.0ms / 25ns = 80000 = 0x0001.3880
-    **************************************************************************/
+    uint32_t duty_cycle;
+    uint8_t returnval;
 
-	if( pos >= 0U & pos <= 100U)
-	{
-	    duty_cycle = 400*pos + 40000;
-	    WTIMER1_TBMATCHR_R = duty_cycle;
-//	    GPIO_PORTF_DATA_R ^= GPIO_PIN_2;
-
-	    returnval = 1U;
+    if (pos >= PWM_POSITION_MIN && pos <= PWM_POSITION_MAX)
+    {
+        duty_cycle = PWM_DUTY_FROM_POSITION(pos);
+        WTIMER1_TBMATCHR_R = duty_cycle;
+        
+        returnval = FUNCTION_SUCCESS;
     }
-	else
-	{
-        returnval = 0U;
-	}
+    else
+    {
+        returnval = FUNCTION_FAIL;
+    }
 
     return returnval;
 }
 
-/* This function must be called in period of 100ms                        */
-void increment (void)
+/* This function must be called in period of 100ms */
+void increment(void)
 {
     uint16_t n;
 
-    n = inc;                        /* 100Hz decrement timer */
+    n = inc;                        /* 100Hz increment timer */
     inc = ++n;
-
 }
 
-/* This function must be called in period of 100ms                        */
-void decrement (void)
+/* This function must be called in period of 100ms */
+void decrement(void)
 {
     uint16_t n;
 
     n = dec;                        /* 100Hz decrement timer */
     if (n) dec = --n;
-
 }
 
 /*******************************************************************************
@@ -122,172 +176,151 @@ void decrement (void)
 * Description    : Generates a linear function based on the final time (tf) and
 *                  the start (y_i) and final value (y_f).
 *******************************************************************************/
-uint8_t fun_linear (double delta_t, uint16_t t_f, uint8_t  y_i, uint8_t  y_f)
+uint8_t fun_linear(double delta_t, uint16_t t_f, uint8_t y_i, uint8_t y_f)
 {
-	double ang_coeff;
-	static double lin_coeff;
-	uint16_t num_points = 0U;
-	uint8_t returnval = 0U;
+    double ang_coeff;
+    static double lin_coeff;
+    uint16_t num_points = 0U;
+    uint8_t returnval = FUNCTION_IN_PROGRESS;
 
-	num_points = (uint16_t)(t_f / delta_t);
-	ang_coeff = (y_f - y_i)/num_points;
-	lin_coeff = y_i;
+    num_points = (uint16_t)(t_f / delta_t);
+    ang_coeff = (y_f - y_i) / num_points;
+    lin_coeff = y_i;
 
-	if (inc >= num_points)      /* Function executed */
-	{
-	    returnval = 1U;
-	    lin_coeff = (double)((inc * ang_coeff) + lin_coeff);
-	}
-	else// if (ang_coeff >= 0.0)   /* Positive angular coeff. */
-	{
-		pwm_throttle = (uint8_t)((inc * ang_coeff) + lin_coeff);
-		set_pwm_position(pwm_throttle);
-		returnval = 0U;
-	}
-
-
+    if (inc >= num_points)      /* Function executed */
+    {
+        returnval = FUNCTION_SUCCESS;
+        lin_coeff = (double)((inc * ang_coeff) + lin_coeff);
+    }
+    else
+    {
+        pwm_throttle = (uint8_t)((inc * ang_coeff) + lin_coeff);
+        set_pwm_position(pwm_throttle);
+        returnval = FUNCTION_IN_PROGRESS;
+    }
 
     return returnval;
 }
 
 /*******************************************************************************
 * Function Name  : fun_trapezoid
-* Input          : double   delta_t [1/interrupt_period]
-*                : uint16_t t_f     [> 0]
-*                : uint8_t  y_i     [0,100]
-*                : uint8_t  y_f     [0,100]
+* Input          : None
 * Output         : None
 * Return         : 1 if success, 0 if fail
-* Description    : Generates a linear function based on the final time (tf) and
-*                  the start (y_i) and final value (y_f).
+* Description    : Generates a trapezoidal throttle profile through a series
+*                  of stepped increases from 0% to 100% and back to 0%.
 *******************************************************************************/
-uint8_t fun_trapezoid (void)
+uint8_t fun_trapezoid(void)
 {
-
-	uint8_t returnval = 0U;
-	static uint8_t state = 0U;
+    uint8_t returnval = FUNCTION_IN_PROGRESS;
+    static uint8_t state = TRAP_STATE_INIT;
 
     /* Finite State Machine (FSM) */
     switch (state)
     {
-    /* State 0:  */
-        case 0:
-        	inc = 0U;
-        	state = 1U;
-        	returnval = 0U;
-        	break;
+        case TRAP_STATE_INIT:
+            RESET_COUNTER();
+            state = TRAP_STATE_RAMP_START;
+            returnval = FUNCTION_IN_PROGRESS;
+            break;
 
-	/* State 1:*/
-		case 1:
-			if (fun_linear (TIMER3_10HZ, 3, 0, 0))
-			{
-				state = 2U;        /* Goes to the next state */
-				inc = 0U;          /* Counter reset          */
-				fix_rpm_start_acq = 1U;
-			}
+        case TRAP_STATE_RAMP_START:
+            if (fun_linear(TIMER3_10HZ, TRAP_RAMP_START_TIME, 
+                          TRAP_THROTTLE_MIN, TRAP_THROTTLE_MIN))
+            {
+                TRANSITION_TO_NEXT_STATE(TRAP_STATE_STEP_10);
+            }
+            break;
 
-			break;
-	/* State 2: */
-		case 2:
-			if (fun_linear (TIMER3_10HZ, 2, 10, 10))
-			{
-				state = 3U;        /* Goes to the next state */
-				inc = 0U;          /* Counter reset          */
-				fix_rpm_start_acq = 1U;
-			}
-			break;
-	/* State 3: */
-		case 3:
-			if (fun_linear (TIMER3_10HZ, 2, 20, 20))
-			{
-				state = 4U;        /* Goes to the next state */
-				inc = 0U;          /* Counter reset          */
-				fix_rpm_start_acq = 1U;
-			}
-			break;
-	/* State 4: */
-			case 4:
-				if (fun_linear (TIMER3_10HZ, 2, 30, 30))
-				{
-					state = 5U;        /* Goes to the next state */
-					inc = 0U;          /* Counter reset          */
-					fix_rpm_start_acq = 1U;
-				}
-				break;
-	/* State 5: */
-		case 5:
-			if (fun_linear (TIMER3_10HZ, 2, 40, 40))
-			{
-				state = 6U;        /* Goes to the next state */
-				inc = 0U;          /* Counter reset          */
-				fix_rpm_start_acq = 1U;
-			}
-			break;
-	/* State 6: */
-		case 6:
-			if (fun_linear (TIMER3_10HZ, 2, 50, 50))
-			{
-				state = 7U;        /* Goes to the next state */
-				inc = 0U;          /* Counter reset          */
-				fix_rpm_start_acq = 1U;
-			}
-			break;
-	/* State 7: */
-		case 7:
-			if (fun_linear (TIMER3_10HZ, 2, 60, 60))
-			{
-				state = 8U;        /* Goes to the next state */
-				inc = 0U;          /* Counter reset          */
-				fix_rpm_start_acq = 1U;
-			}
-			break;
-	/* State 8: */
-		case 8:
-			if (fun_linear (TIMER3_10HZ, 2, 70, 70))
-			{
-				state = 9U;        /* Goes to the next state */
-				inc = 0U;          /* Counter reset          */
-				fix_rpm_start_acq = 1U;
-			}
-			break;
-	/* State 9: */
-		case 9:
-			if (fun_linear (TIMER3_10HZ, 2, 80, 80))
-			{
-				state = 10U;       /* Goes to the next state */
-				inc = 0U;          /* Counter reset          */
-				fix_rpm_start_acq = 1U;
-			}
-			break;
-	/* State 10: */
-		case 10:
-			if (fun_linear (TIMER3_10HZ, 2, 90, 90))
-			{
-				state = 11U;       /* Goes to the next state */
-				inc = 0U;          /* Counter reset          */
-				fix_rpm_start_acq = 1U;
-			}
-			break;
-	/* State 11: */
-		case 11:
-			if (fun_linear (TIMER3_10HZ, 3, 100, 0))
-			{
-				state = 12U;       /* Goes to the next state */
-				inc = 0U;          /* Counter reset          */
-				fix_rpm_start_acq = 1U;
-			}
-			break;
-	/* State 12: */
-		case 12:
-			state = 0U;
-			returnval = 1U;
-			//fix_rpm_start_acq = 1U;
-			break;
-		default:
-			/* code */
-			break;
+        case TRAP_STATE_STEP_10:
+            if (fun_linear(TIMER3_10HZ, TRAP_STEP_HOLD_TIME, 
+                          1 * TRAP_THROTTLE_STEP, 1 * TRAP_THROTTLE_STEP))
+            {
+                TRANSITION_TO_NEXT_STATE(TRAP_STATE_STEP_20);
+            }
+            break;
 
-	}
+        case TRAP_STATE_STEP_20:
+            if (fun_linear(TIMER3_10HZ, TRAP_STEP_HOLD_TIME, 
+                          2 * TRAP_THROTTLE_STEP, 2 * TRAP_THROTTLE_STEP))
+            {
+                TRANSITION_TO_NEXT_STATE(TRAP_STATE_STEP_30);
+            }
+            break;
+
+        case TRAP_STATE_STEP_30:
+            if (fun_linear(TIMER3_10HZ, TRAP_STEP_HOLD_TIME, 
+                          3 * TRAP_THROTTLE_STEP, 3 * TRAP_THROTTLE_STEP))
+            {
+                TRANSITION_TO_NEXT_STATE(TRAP_STATE_STEP_40);
+            }
+            break;
+
+        case TRAP_STATE_STEP_40:
+            if (fun_linear(TIMER3_10HZ, TRAP_STEP_HOLD_TIME, 
+                          4 * TRAP_THROTTLE_STEP, 4 * TRAP_THROTTLE_STEP))
+            {
+                TRANSITION_TO_NEXT_STATE(TRAP_STATE_STEP_50);
+            }
+            break;
+
+        case TRAP_STATE_STEP_50:
+            if (fun_linear(TIMER3_10HZ, TRAP_STEP_HOLD_TIME, 
+                          5 * TRAP_THROTTLE_STEP, 5 * TRAP_THROTTLE_STEP))
+            {
+                TRANSITION_TO_NEXT_STATE(TRAP_STATE_STEP_60);
+            }
+            break;
+
+        case TRAP_STATE_STEP_60:
+            if (fun_linear(TIMER3_10HZ, TRAP_STEP_HOLD_TIME, 
+                          6 * TRAP_THROTTLE_STEP, 6 * TRAP_THROTTLE_STEP))
+            {
+                TRANSITION_TO_NEXT_STATE(TRAP_STATE_STEP_70);
+            }
+            break;
+
+        case TRAP_STATE_STEP_70:
+            if (fun_linear(TIMER3_10HZ, TRAP_STEP_HOLD_TIME, 
+                          7 * TRAP_THROTTLE_STEP, 7 * TRAP_THROTTLE_STEP))
+            {
+                TRANSITION_TO_NEXT_STATE(TRAP_STATE_STEP_80);
+            }
+            break;
+
+        case TRAP_STATE_STEP_80:
+            if (fun_linear(TIMER3_10HZ, TRAP_STEP_HOLD_TIME, 
+                          8 * TRAP_THROTTLE_STEP, 8 * TRAP_THROTTLE_STEP))
+            {
+                TRANSITION_TO_NEXT_STATE(TRAP_STATE_STEP_90);
+            }
+            break;
+
+        case TRAP_STATE_STEP_90:
+            if (fun_linear(TIMER3_10HZ, TRAP_STEP_HOLD_TIME, 
+                          9 * TRAP_THROTTLE_STEP, 9 * TRAP_THROTTLE_STEP))
+            {
+                TRANSITION_TO_NEXT_STATE(TRAP_STATE_RAMP_DOWN);
+            }
+            break;
+
+        case TRAP_STATE_RAMP_DOWN:
+            if (fun_linear(TIMER3_10HZ, TRAP_RAMP_DOWN_TIME, 
+                          TRAP_THROTTLE_MAX, TRAP_THROTTLE_MIN))
+            {
+                TRANSITION_TO_NEXT_STATE(TRAP_STATE_COMPLETE);
+            }
+            break;
+
+        case TRAP_STATE_COMPLETE:
+            state = TRAP_STATE_INIT;
+            returnval = FUNCTION_SUCCESS;
+            break;
+
+        default:
+            state = TRAP_STATE_INIT;
+            break;
+    }
 
     return returnval;
 }
