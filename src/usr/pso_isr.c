@@ -23,6 +23,7 @@
 #include "hw_uart.h"
 #include "pso_init.h"
 #include "pso_uart.h"
+#include "hw_ints.h"
 #include "diskio.h" /* FatFs timer - disk_timerproc () */
 #include "pso_pwm.h" /* Function generator - inc/dec funcs */
 #include "fifo.h"
@@ -30,7 +31,6 @@
 #include "ulink.h"
 #include "ulink_pso.h"
 #include "ulink_types.h"
-#include <hw_ints>
 
 extern uart_raw_data_t g_uart0_data; /*Defined in "pos_uart.c" */
 uint8_t g_timer_a0_scan_flag = 0U;   /* Main: 500k/4 = 125 kHz scan rate */
