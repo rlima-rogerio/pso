@@ -46,13 +46,13 @@
 
 #include <stdbool.h>
 #include <stdint.h>
-#include "hw_ints.h"
 #include "hw_memmap.h"
 #include "hw_types.h"
 #include "hw_watchdog.h"
 #include "debug.h"
 #include "interrupt.h"
 #include "watchdog.h"
+#include <hw_ints>
 
 //*****************************************************************************
 //

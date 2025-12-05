@@ -47,12 +47,12 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include "hw_flash.h"
-#include "hw_ints.h"
 #include "hw_sysctl.h"
 #include "hw_types.h"
 #include "debug.h"
 #include "flash.h"
 #include "interrupt.h"
+#include <hw_ints>
 
 //*****************************************************************************
 //

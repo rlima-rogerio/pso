@@ -46,7 +46,6 @@
 
 #include <stdbool.h>
 #include <stdint.h>
-#include "hw_ints.h"
 #include "hw_memmap.h"
 #include "hw_pwm.h"
 #include "hw_sysctl.h"
@@ -54,6 +53,7 @@
 #include "debug.h"
 #include "interrupt.h"
 #include "pwm.h"
+#include <hw_ints>
 
 //*****************************************************************************
 //

@@ -1,14 +1,15 @@
 /*
- * myinit.c
+ * pso_data.c
  *
  *  Created on: 31/Aug/2015
  *      Author: Rogerio
  */
 
 #include <stdint.h>
+#include <stddef.h>     /* For NULL definition */
+#include <string.h>
 #include "pso_uart.h"
 #include "pso_data.h"
-
 
 /*******************************************************************************
 * Function Name  : copy_raw_data
@@ -19,9 +20,14 @@
 *                  in (txBuffer) into the UART addressed by (ui32Base) address.
 *                  Copy data to txBuffer just prior send it over UART.
 *******************************************************************************/
-uint8_t copy_raw_data (uint8_t* txBuffer, uart_raw_data_t* g_uart0_data)
+uint8_t copy_raw_data(uint8_t* txBuffer, struct uart_raw_data_t* g_uart0_data)
 {
-    uint8_t returnval;
+    uint8_t returnval = 0U;  /* Initialize to prevent warning */
+
+    if (txBuffer == NULL || g_uart0_data == NULL)
+    {
+        return 0U;  /* Error: NULL pointer */
+    }
 
     txBuffer[0] = g_uart0_data->rx_buffer[0];
     txBuffer[1] = g_uart0_data->rx_buffer[1];
@@ -31,8 +37,9 @@ uint8_t copy_raw_data (uint8_t* txBuffer, uart_raw_data_t* g_uart0_data)
     txBuffer[5] = g_uart0_data->rx_buffer[5];
     txBuffer[6] = g_uart0_data->rx_buffer[6];
     txBuffer[7] = g_uart0_data->rx_buffer[7];
-    txBuffer[0] = g_uart0_data->rx_index++;
+    txBuffer[0] = g_uart0_data->rx_index++;  /* Note: overwrites txBuffer[0] */
 
+    returnval = 1U;  /* Success */
 
     return returnval;
 }
@@ -47,9 +54,14 @@ uint8_t copy_raw_data (uint8_t* txBuffer, uart_raw_data_t* g_uart0_data)
 *                  in (txBuffer) into the UART addressed by (ui32Base) address.
 *                  Copy data to txBuffer just prior send it over UART.
 *******************************************************************************/
-uint8_t read_raw_data (uart_raw_data_t* g_uart0_data)
+uint8_t read_raw_data(struct uart_raw_data_t* g_uart0_data)
 {
-    uint8_t returnval;
+    uint8_t returnval = 0U;  /* Initialize to prevent warning */
+
+    if (g_uart0_data == NULL)
+    {
+        return 0U;  /* Error: NULL pointer */
+    }
 
     g_uart0_data->rx_buffer[0] = 'P';
     g_uart0_data->rx_buffer[1] = 'S';
@@ -61,7 +73,7 @@ uint8_t read_raw_data (uart_raw_data_t* g_uart0_data)
     g_uart0_data->rx_buffer[7] = '\n';
     g_uart0_data->rx_index++;
 
+    returnval = 1U;  /* Success */
 
     return returnval;
 }
-
