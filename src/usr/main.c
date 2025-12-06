@@ -1,57 +1,67 @@
+/*******************************************************************************
+ * FILENAME:    main.c (Refactored)
+ *
+ * DESCRIPTION:
+ *       Main application for PSO data acquisition system with UART streaming.
+ *       Instead of saving to SD card, data is streamed continuously via UART.
+ *
+ * AUTHOR:      Rogerio Lima (Original)
+ *              Refactored: 2025
+ *
+ * CHANGES:
+ *       - Removed SD card functionality
+ *       - Added UART streaming
+ *       - Improved code readability
+ *       - Better state machine organization
+ *       - Enhanced comments and documentation
+ ******************************************************************************/
+
 #include <stdio.h>
 #include <stdint.h>
 #include <stdbool.h>
 #include <string.h>
-#include "tm4c123gh6pm.h"   /* Interrupt and register assignments on the Tiva C LauchPad board */
-#include "hw_memmap.h"      /* Macros defining the memory map of the device. */
-#include "hw_types.h"       /* Macros for hardware access, direct and via the bit-band region. */
-#include "sysctl.h"         /* Prototypes for the system control driver. */
-#include "gpio.h"           /* Defines and Macros for GPIO API */
-#include "debug.h"          /* Macros for assisting debug of the driver library. */
-#include "pwm.h"            /* API function protoypes for Pulse Width Modulation (PWM) ports */
-#include "pin_map.h"        /* Mapping of peripherals to pins for all parts. */
-#include "hw_gpio.h"        /* Defines and Macros for GPIO hardware. */
-#include "rom.h"            /* Macros to facilitate calling functions in the ROM. */
-#include "timer.h"          /* Prototypes for the timer module */
-#include "uart.h"           /* Defines and Macros for the UART. */
-#include "interrupt.h"      /* Prototypes for the NVIC Interrupt Controller Driver */
+#include "tm4c123gh6pm.h"
+#include "hw_memmap.h"
+#include "hw_types.h"
+#include "sysctl.h"
+#include "gpio.h"
+#include "debug.h"
+#include "pwm.h"
+#include "pin_map.h"
+#include "hw_gpio.h"
+#include "rom.h"
+#include "timer.h"
+#include "uart.h"
+#include "interrupt.h"
 #include "pso_init.h"
 #include "pso_uart.h"
 #include "pso_led.h"
 #include "pso_data.h"
 #include "adc.h"
 #include "pso_pwm.h"
-#include "ff.h"     /* Declarations of FatFs API */
 #include "fifo.h"
 #include "ulink.h"
 #include "ulink_types.h"
 
-/* FIX: if these functions are not declared in any header, declare them here */
-void sd_stand_by(void);
-void sd_ok(void);
-void sd_finish_record(void);
-void sd_error(void);
-
-///*******************************************************************************
-// * ENUMERATIONS
-// ******************************************************************************/
-//typedef enum {
-//    SYS_STATE_WAIT_SW1 = 0U,           /* Waits for SW1 be pressed */
-//    SYS_STATE_SD_INIT = 1U,            /* Starts SD card and register FatFs work area */
-//    SYS_STATE_RECORDING = 2U,          /* Starts to fill fifos and write data to the memory */
-//    SYS_STATE_CLOSE_FILE = 3U,         /* Close file and unmount SD card */
-//    SYS_STATE_FINISH = 4U,             /* Finish recording indication */
-//    SYS_STATE_SD_ERROR = 5U            /* SD error state */
-//} sys_state_t;
+/*******************************************************************************
+ * SYSTEM STATE MACHINE DEFINITIONS
+ ******************************************************************************/
+typedef enum {
+    SYS_STATE_IDLE = 0U,           /* System idle, waiting for start command */
+    SYS_STATE_INIT = 1U,           /* Initialize streaming parameters */
+    SYS_STATE_STREAMING = 2U,      /* Active data streaming via UART */
+    SYS_STATE_STOPPING = 3U,       /* Gracefully stopping streaming */
+    SYS_STATE_ERROR = 4U           /* Error state */
+} sys_state_t;
 
 /*******************************************************************************
- * DEFINES
+ * CONFIGURATION DEFINES
  ******************************************************************************/
-//#define PART_TM4C123GH6PM    /* Used for Port/Pin Mapping Definitions defined in "pin_map.h" */
-#define PWM_FREQUENCY  50
-#define BUFFERSIZE16KB 16384
-#define SD_FINISH_ITERATIONS 10U
-#define SD_ERROR_ITERATIONS  5U
+#define PWM_FREQUENCY           50U
+#define STREAMING_RATE_HZ       125000U     /* 125 kHz data rate */
+#define FIFO_BUFFER_SIZE        256U        /* FIFO buffer size */
+#define ERROR_BLINK_COUNT       5U
+#define FINISH_BLINK_COUNT      10U
 
 /*******************************************************************************
  * EXTERNAL VARIABLES
@@ -64,346 +74,352 @@ extern ulink_pso_data_t dp;
 extern fifo_t g_fifo_ping;
 extern fifo_t g_fifo_pong;
 extern uint8_t pwm_throttle;
+extern uint8_t fix_rpm_start_acq;
 
 /*******************************************************************************
  * GLOBAL VARIABLES
  ******************************************************************************/
-/* ff11a */
-#if (FAT_FS11A)
-FATFS FatFs;        /* FatFs work area needed for each volume */
-FIL Fil;            /* File object needed for each open file */
-#endif
-
-/* ff09b */
-#if (FAT_FS09B)
-FATFS fs[1];              /* Work area (file system object) for logical drives */
-FIL ftxt;                 /* File objects */
-BYTE buffer[BUFFERSIZE16KB];  /* File copy buffer */
-FRESULT res;              /* FatFs function common result code */
-WORD bw;                  /* File write count */
-CHAR filename[12];        /* Filename buffer */
-#endif
-
 uint16_t scan_period_actual;
-uint8_t record_sd = 0U;           /* SD record flag */
-uint8_t state = 0U;               /* FIFO FSM */
-uint8_t fix_rpm_start_acq = 0U;   /* Flag to fix RPM and start of acq. */
-bool b_aux;
-
-/* FIX: make enable_fifo_write global, since multiple functions use it */
-uint8_t enable_fifo_write = 1U;
+uint8_t streaming_active = 0U;          /* UART streaming active flag */
+uint8_t enable_data_capture = 1U;       /* Enable data capture flag */
+uint8_t fix_rpm_start_acq = 0U;         /* Flag to fix RPM and start acquisition */
 
 /*******************************************************************************
  * FUNCTION PROTOTYPES
  ******************************************************************************/
 static void system_init(void);
-/* FIX: remove parameter; we’ll use global enable_fifo_write instead */
-static void handle_sd_recording(void);
-static void handle_buffer_filling(uint16_t *k, sys_state_t sys_state);
-static sys_state_t fsm_state_wait_sw1(void);
-static sys_state_t fsm_state_sd_init(uint8_t *percent, uint8_t *enable_fifo_write);
-static sys_state_t fsm_state_recording(uint8_t *ret_func);
-static sys_state_t fsm_state_close_file(uint8_t *enable_fifo_write);
-static sys_state_t fsm_state_finish(void);
-static sys_state_t fsm_state_sd_error(void);
+static void stream_data_uart(void);
+static void handle_data_capture(void);
+
+/* State machine handlers */
+static sys_state_t state_idle(void);
+static sys_state_t state_init(void);
+static sys_state_t state_streaming(void);
+static sys_state_t state_stopping(void);
+static sys_state_t state_error(void);
+
+/* LED indication functions */
+static void indicate_standby(void);
+static void indicate_streaming(void);
+static void indicate_finish(void);
+static void indicate_error(void);
 
 /*******************************************************************************
  * MAIN FUNCTION
  ******************************************************************************/
 int main(void)
 {
-    static uint16_t k = 0U;
-    uint8_t percent = 0U;
-    /* FIX: remove local enable_fifo_write; now using global one */
-    /* uint8_t enable_fifo_write = 1U; */
-    uint8_t ret_func = 0U;
-    sys_state_t sys_state = SYS_STATE_WAIT_SW1;
+    sys_state_t sys_state = SYS_STATE_IDLE;
 
-    /* System initialization */
+    /* Initialize system peripherals and configurations */
     system_init();
 
     /***************************************************************************
      * MAIN LOOP
-     * 1) Ajustar % do sinal PWM
-     * 2) Aguardar tempo para estabilizacao da RPM
-     * 3) Esvaziar FIFO
-     * 4) Fazer aquisicao
-     * 5) Salvar dados no SD cujo nome contenha os parametros do teste.
+     * 
+     * System operation:
+     * 1. Wait for start command (SW1 press)
+     * 2. Initialize streaming parameters
+     * 3. Stream data continuously via UART
+     * 4. Execute PWM trapezoid profile during streaming
+     * 5. Stop streaming on command (SW2 press or trapezoid complete)
      **************************************************************************/
-    while(1)
+    while (1)
     {
+        /* Capture current scan period for timing calculations */
         scan_period_actual = TIMER3_TAR_R;
 
+        /* Process data when scan timer flag is set */
         if (g_timer_a0_scan_flag)
         {
-            g_timer_a0_scan_flag = 0U;typedef enum {
-                SYS_STATE_WAIT_SW1 = 0U,           /* Waits for SW1 be pressed */
-                SYS_STATE_SD_INIT = 1U,            /* Starts SD card and register FatFs work area */
-                SYS_STATE_RECORDING = 2U,          /* Starts to fill fifos and write data to the memory */
-                SYS_STATE_CLOSE_FILE = 3U,         /* Close file and unmount SD card */
-                SYS_STATE_FINISH = 4U,             /* Finish recording indication */
-                SYS_STATE_SD_ERROR = 5U            /* SD error state */
-            } sys_state_t;
+            g_timer_a0_scan_flag = 0U;
 
+            /* Prepare data packet for transmission */
             packet_data(&dp);
             copy_data(uart_tx_buffer, &dp);
 
-            /* Recording data to the SD card */
-            /* FIX: now matches prototype (no arguments) */
-            handle_sd_recording();
+            /* Stream data via UART if streaming is active */
+            stream_data_uart();
 
-            /* System Finite State Machine (FSM) */
+            /* Handle data capture and buffering */
+            handle_data_capture();
+
+            /* Execute system state machine */
             switch (sys_state)
             {
-                case SYS_STATE_WAIT_SW1:
-                    sys_state = fsm_state_wait_sw1();
+                case SYS_STATE_IDLE:
+                    sys_state = state_idle();
                     break;
 
-                case SYS_STATE_SD_INIT:
-                    sys_state = fsm_state_sd_init(&percent, &enable_fifo_write);
+                case SYS_STATE_INIT:
+                    sys_state = state_init();
                     break;
 
-                case SYS_STATE_RECORDING:
-                    sys_state = fsm_state_recording(&ret_func);
+                case SYS_STATE_STREAMING:
+                    sys_state = state_streaming();
                     break;
 
-                case SYS_STATE_CLOSE_FILE:
-                    sys_state = fsm_state_close_file(&enable_fifo_write);
+                case SYS_STATE_STOPPING:
+                    sys_state = state_stopping();
                     break;
 
-                case SYS_STATE_FINISH:
-                    sys_state = fsm_state_finish();
-                    break;
-
-                case SYS_STATE_SD_ERROR:
-                    sys_state = fsm_state_sd_error();
+                case SYS_STATE_ERROR:
+                    sys_state = state_error();
                     break;
 
                 default:
-                    sys_state = SYS_STATE_WAIT_SW1;
+                    /* Invalid state - return to idle */
+                    sys_state = SYS_STATE_IDLE;
                     break;
             }
 
-            /* Fills the buffer only if RPM is fixed */
-            handle_buffer_filling(&k, sys_state);
-
-            /* Update index */
+            /* Update index with actual scan time */
             dp.index = TIMER3_TAR_R - scan_period_actual;
-
-        } /* END 'if' */
-    } /* END 'while' */
+        }
+    }
 }
 
 /*******************************************************************************
- * FUNCTION IMPLEMENTATIONS
+ * SYSTEM INITIALIZATION
  ******************************************************************************/
-
-/**
- * @brief Initialize system peripherals and configurations
- */
 static void system_init(void)
 {
     uint16_t i;
 
-    /* 16MHz -> PLL -> 400MHz -> (1/2 * 1/5 = 1/10) = 40MHz  */
-    SysCtlClockSet(SYSCTL_SYSDIV_5 | SYSCTL_USE_PLL | SYSCTL_OSC_MAIN | SYSCTL_XTAL_16MHZ);
+    /* Configure system clock: 16MHz -> PLL -> 400MHz -> /10 = 40MHz */
+    SysCtlClockSet(SYSCTL_SYSDIV_5 | SYSCTL_USE_PLL | 
+                   SYSCTL_OSC_MAIN | SYSCTL_XTAL_16MHZ);
 
+    /* Enable and configure peripherals */
     PSO_PeripheralEnable();
     PSO_GPIOConfig();
     PSO_UART0Config();
     PSO_Timers();
     PSO_ADCConfig();
 
-    /* Small delay for stabilization */
+    /* Stabilization delay */
     for (i = 0U; i < 10000U; i++);
 
+    /* Configure additional peripherals */
     pso_rpm_config();
     pso_pwm_config();
     pso_spi0_config();
 
+    /* Initialize FIFOs */
+    fifo_init(&g_fifo_ping);
+    fifo_init(&g_fifo_pong);
+
+    /* Enable global interrupts */
     IntMasterEnable();
 
+    /* Turn off all LEDs initially */
     PSO_LEDWhiteOff();
 }
 
-/**
- * @brief Handle SD card recording process
- */
-/* FIX: removed stray ';' and parameter */
-static void handle_sd_recording(void)
+/*******************************************************************************
+ * UART DATA STREAMING
+ * 
+ * Transmits data packet via UART0 when streaming is active.
+ ******************************************************************************/
+static void stream_data_uart(void)
 {
-    UINT bw_local;
-
-    if (record_sd && enable_fifo_write)
+    if (streaming_active && enable_data_capture)
     {
-        /* DEBUG */
-        GPIO_PORTF_DATA_R |= GPIO_PIN_1; /* Red LED on PF1 */
-
-        res = f_write(&ftxt, &buffer, sizeof(buffer), &bw_local);
-        f_close(&ftxt);
-        f_mount(0, NULL);
-
-        /* DEBUG */
-        GPIO_PORTF_DATA_R &= ~GPIO_PIN_1; /* Red LED off PF1 */
-
-        record_sd = 0U;
+        /* Transmit data packet via UART */
+        uartBatchWrite(UART0_BASE, uart_tx_buffer, PACKET_LENGTH);
+        
+        /* Toggle LED to indicate streaming activity */
+        led_blue_toggle();
     }
 }
 
-/**
- * @brief Handle buffer filling logic
- * @param k Pointer to buffer index
- * @param sys_state Current system state
- */
-static void handle_buffer_filling(uint16_t *k, sys_state_t sys_state)
+/*******************************************************************************
+ * DATA CAPTURE HANDLER
+ * 
+ * Manages data capture and FIFO operations during active streaming.
+ ******************************************************************************/
+static void handle_data_capture(void)
 {
-    uint16_t i;
-
-    if ((*k <= (BUFFERSIZE16KB - PACKET_LENGTH)) && fix_rpm_start_acq)
+    uint8_t i;
+    
+    if (fix_rpm_start_acq && enable_data_capture)
     {
+        /* Write data to FIFO for buffering */
         for (i = 0U; i < PACKET_LENGTH; i++)
         {
-            buffer[*k] = (uint8_t)uart_tx_buffer[i];
-            (*k)++;
+            if (!fifo_put(&g_fifo_ping, (uint8_t)uart_tx_buffer[i]))
+            {
+                /* FIFO full - data loss prevention */
+                break;
+            }
         }
     }
-    else if (sys_state && fix_rpm_start_acq)
-    {
-        fix_rpm_start_acq = 0U;
-        /* FIX: enable_fifo_write is now global, so this compiles */
-        enable_fifo_write = 0U;
-        sys_state = SYS_STATE_SD_INIT;
-        record_sd = 1U;
-        *k = 0U;
-    }
 }
 
-/**
- * @brief FSM State 0: Wait for SW1 button press
- * @return Next state
- */
-static sys_state_t fsm_state_wait_sw1(void)
+/*******************************************************************************
+ * STATE MACHINE: IDLE STATE
+ * 
+ * Wait for user input to start streaming.
+ * SW1 button press initiates the streaming process.
+ ******************************************************************************/
+static sys_state_t state_idle(void)
 {
-    sd_stand_by();
+    indicate_standby();
 
-    /* Switch #1 pressed */
+    /* Check if SW1 is pressed */
     if (!(GPIO_PORTF_DATA_R & GPIO_PIN_4))
     {
-        return SYS_STATE_SD_INIT;
+        return SYS_STATE_INIT;
     }
 
-    return SYS_STATE_WAIT_SW1;
+    return SYS_STATE_IDLE;
 }
 
-/**
- * @brief FSM State 1: Initialize SD card and FatFs
- * @param percent Pointer to file counter
- * @param enable_fifo_write Pointer to FIFO write enable flag
- * @return Next state
- */
-static sys_state_t fsm_state_sd_init(uint8_t *percent, uint8_t *enable_fifo_write)
+/*******************************************************************************
+ * STATE MACHINE: INIT STATE
+ * 
+ * Initialize streaming parameters and prepare for data transmission.
+ ******************************************************************************/
+static sys_state_t state_init(void)
 {
-#if (FAT_FS09B)
-    sprintf(filename, "daq_%d.txt", *percent);
-    puts("FsFAT Testing");
-    (*percent)++;
+    /* Reset streaming flags */
+    fix_rpm_start_acq = 1U;
+    enable_data_capture = 1U;
+    streaming_active = 1U;
 
-    memset(&fs, 0, sizeof(FATFS));
+    /* Clear FIFOs */
+    fifo_init(&g_fifo_ping);
+    fifo_init(&g_fifo_pong);
 
-    /* Register work area for each volume */
-    res = f_mount(0, &fs[0]);
-
-    if (res != FR_OK)
-    {
-        printf("res = %d f_mount\n", res);
-    }
-
-    /* Create destination file on drive 0 */
-    res = f_open(&ftxt, filename, FA_CREATE_ALWAYS | FA_WRITE);
-
-    if (res == FR_OK)
-    {
-        fix_rpm_start_acq = 1U;
-        *enable_fifo_write = 1U;
-        sd_ok();
-        return SYS_STATE_RECORDING;
-    }
-    else
-    {
-        return SYS_STATE_SD_ERROR;
-    }
-#endif
-
-    return SYS_STATE_WAIT_SW1;
+    /* Indicate successful initialization */
+    PSO_LEDGreenOn();
+    
+    return SYS_STATE_STREAMING;
 }
 
-/**
- * @brief FSM State 2: Recording data
- * @param ret_func Pointer to return function flag
- * @return Next state
- */
-static sys_state_t fsm_state_recording(uint8_t *ret_func)
+/*******************************************************************************
+ * STATE MACHINE: STREAMING STATE
+ * 
+ * Active data streaming via UART.
+ * Executes PWM trapezoid profile and monitors for stop conditions.
+ ******************************************************************************/
+static sys_state_t state_streaming(void)
 {
-    /* DEBUG */
-    led_blue_toggle();
+    uint8_t trapezoid_complete;
 
-    /* Don't change PWM/RPM until have acquired data */
+    indicate_streaming();
+
+    /* Execute trapezoid profile (only when data capture is ready) */
     if (!fix_rpm_start_acq)
     {
-        *ret_func = fun_trapezoid();
+        trapezoid_complete = fun_trapezoid();
+        
+        /* Check if trapezoid profile is complete */
+        if (trapezoid_complete)
+        {
+            return SYS_STATE_STOPPING;
+        }
     }
 
-    /* Switch #2 - Finish the recording */
-    if (!(GPIO_PORTF_DATA_R & GPIO_PIN_0) || (*ret_func))
+    /* Check if SW2 is pressed (manual stop) */
+    if (!(GPIO_PORTF_DATA_R & GPIO_PIN_0))
     {
-        return SYS_STATE_CLOSE_FILE; /* SW2 pressed: stops recording */
+        return SYS_STATE_STOPPING;
     }
 
-    return SYS_STATE_RECORDING; /* SW2 not pressed */
+    return SYS_STATE_STREAMING;
 }
 
-/**
- * @brief FSM State 3: Close file and unmount SD card
- * @param enable_fifo_write Pointer to FIFO write enable flag
- * @return Next state
- */
-static sys_state_t fsm_state_close_file(uint8_t *enable_fifo_write)
+/*******************************************************************************
+ * STATE MACHINE: STOPPING STATE
+ * 
+ * Gracefully stop streaming and cleanup.
+ ******************************************************************************/
+static sys_state_t state_stopping(void)
 {
-    f_close(&ftxt);
-    f_mount(0, NULL);
-    *enable_fifo_write = 0U; /* Disables write to the fifo */
+    /* Disable streaming and data capture */
+    streaming_active = 0U;
+    enable_data_capture = 0U;
+    fix_rpm_start_acq = 0U;
 
-    return SYS_STATE_FINISH;
+    /* Flush any remaining data in FIFOs */
+    while (!fifo_is_empty(&g_fifo_ping))
+    {
+        uint8_t data = fifo_get(&g_fifo_ping);
+        /* Transmit remaining data */
+        UARTCharPut(UART0_BASE, data);
+    }
+
+    indicate_finish();
+
+    return SYS_STATE_IDLE;
 }
 
-/**
- * @brief FSM State 4: Finish recording indication
- * @return Next state
- */
-static sys_state_t fsm_state_finish(void)
+/*******************************************************************************
+ * STATE MACHINE: ERROR STATE
+ * 
+ * Handle error conditions and provide visual feedback.
+ ******************************************************************************/
+static sys_state_t state_error(void)
+{
+    /* Disable all operations */
+    streaming_active = 0U;
+    enable_data_capture = 0U;
+
+    indicate_error();
+
+    return SYS_STATE_IDLE;
+}
+
+/*******************************************************************************
+ * LED INDICATION FUNCTIONS
+ ******************************************************************************/
+
+/* Indicate system in standby mode */
+static void indicate_standby(void)
+{
+    static uint16_t blink_counter = 0U;
+    
+    /* Slow white LED blink */
+    if (++blink_counter > 5000U)
+    {
+        GPIO_PORTF_DATA_R ^= (GPIO_PIN_1 | GPIO_PIN_2 | GPIO_PIN_3);
+        blink_counter = 0U;
+    }
+}
+
+/* Indicate active streaming */
+static void indicate_streaming(void)
+{
+    /* Green LED solid on during streaming */
+    PSO_LEDGreenOn();
+    PSO_LEDRedOff();
+}
+
+/* Indicate streaming finished successfully */
+static void indicate_finish(void)
 {
     uint16_t i;
-
-    for (i = 0U; i < SD_FINISH_ITERATIONS; i++)
+    
+    for (i = 0U; i < FINISH_BLINK_COUNT; i++)
     {
-        sd_finish_record(); /* Turn on white LED */
+        PSO_LEDWhiteOn();
+        SysCtlDelay(SysCtlClockGet() / 12U);  /* ~250ms delay */
+        PSO_LEDWhiteOff();
+        SysCtlDelay(SysCtlClockGet() / 12U);
     }
-
-    return SYS_STATE_WAIT_SW1;
 }
 
-/**
- * @brief FSM State 5: SD error handling
- * @return Next state
- */
-static sys_state_t fsm_state_sd_error(void)
+/* Indicate error condition */
+static void indicate_error(void)
 {
     uint16_t i;
-
-    for (i = 0U; i < SD_ERROR_ITERATIONS; i++)
+    
+    for (i = 0U; i < ERROR_BLINK_COUNT; i++)
     {
-        sd_error();
+        PSO_LEDRedOn();
+        SysCtlDelay(SysCtlClockGet() / 6U);   /* ~500ms delay */
+        PSO_LEDRedOff();
+        SysCtlDelay(SysCtlClockGet() / 6U);
     }
-
-    return SYS_STATE_WAIT_SW1;
 }

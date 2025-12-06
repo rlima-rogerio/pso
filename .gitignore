@@ -16,9 +16,9 @@ Release/
 # CCS project files that are auto-generated
 .launches/
 .ccsproject
-.cproject
-.project
-.settings/
+#.cproject   # Keep this to allow CCS to recognize the repo as a project when importing
+#.project    # ||
+#.settings/  # ||
 
 # CCS build artifacts
 *.d
