@@ -21,7 +21,7 @@
 *
 ******************************************************************************/
 uint8_t uartBatchWrite (uint32_t ui32Base, uint16_t* txBuffer, const uint8_t bytesToWrite);
-uint8_t i2cBatchRead (uint32_t ui32Base, uint8_t* rxBuffer, uint8_t bytesToRead);
+// uint8_t i2cBatchRead (uint32_t ui32Base, uint8_t* rxBuffer, uint8_t bytesToRead);
 
 
 /******************************************************************************
@@ -33,7 +33,7 @@ typedef struct uart_raw_data_t
 {
 	uint8_t rx_buffer[UART_MAX_BUFFER];     /* Rx buffer       */
 	uint8_t rx_index;                       /* Rx buffer index */
-    uint8_t new_data;                       /* New data flag   */
+  uint8_t new_data;                       /* New data flag   */
 
 } uart_raw_data_t;
 

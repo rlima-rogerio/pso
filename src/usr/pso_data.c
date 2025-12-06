@@ -21,7 +21,7 @@
 *******************************************************************************/
 uint8_t copy_raw_data (uint8_t* txBuffer, uart_raw_data_t* g_uart0_data)
 {
-    uint8_t returnval;
+    uint8_t returnval = 0U;
 
     txBuffer[0] = g_uart0_data->rx_buffer[0];
     txBuffer[1] = g_uart0_data->rx_buffer[1];
@@ -49,7 +49,7 @@ uint8_t copy_raw_data (uint8_t* txBuffer, uart_raw_data_t* g_uart0_data)
 *******************************************************************************/
 uint8_t read_raw_data (uart_raw_data_t* g_uart0_data)
 {
-    uint8_t returnval;
+    uint8_t returnval = 0U;
 
     g_uart0_data->rx_buffer[0] = 'P';
     g_uart0_data->rx_buffer[1] = 'S';

@@ -23,7 +23,7 @@
 #include "hw_uart.h"
 #include "pso_init.h"
 #include "pso_uart.h"
-#include "hw_ints.h"
+//#include "hw_ints.h"
 #include "diskio.h" /* FatFs timer - disk_timerproc () */
 #include "pso_pwm.h" /* Function generator - inc/dec funcs */
 #include "fifo.h"

@@ -1,3 +1,5 @@
+#include <string.h>   // Para memset
+#include <stdio.h>    // Para printf
 #include "ulink.h"
 #include "ulink_types.h"
 #include "ulink_pso.h"
@@ -213,7 +215,7 @@ void copy_data (uint16_t* uart_tx_buf, ulink_pso_data_t* dp)
 *******************************************************************************/
 uint8_t packet_data (ulink_pso_data_t* dp)
 {
-    uint8_t returnval;
+    uint8_t returnval = 0U;
 //    static uint32_t delta = 0;
 //    static uint32_t tav_1 = 0U; /* Previous edge count */
 

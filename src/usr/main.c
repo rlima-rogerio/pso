@@ -229,7 +229,7 @@ static void stream_data_uart(void)
         uartBatchWrite(UART0_BASE, uart_tx_buffer, PACKET_LENGTH);
         
         /* Toggle LED to indicate streaming activity */
-        led_blue_toggle();
+        //led_green_toggle();
     }
 }
 
@@ -269,6 +269,7 @@ static sys_state_t state_idle(void)
     /* Check if SW1 is pressed */
     if (!(GPIO_PORTF_DATA_R & GPIO_PIN_4))
     {
+        PSO_LEDWhiteOff();
         return SYS_STATE_INIT;
     }
 
@@ -292,7 +293,7 @@ static sys_state_t state_init(void)
     fifo_init(&g_fifo_pong);
 
     /* Indicate successful initialization */
-    PSO_LEDGreenOn();
+    //PSO_LEDGreenOn();
     
     return SYS_STATE_STREAMING;
 }
@@ -380,10 +381,11 @@ static void indicate_standby(void)
 {
     static uint16_t blink_counter = 0U;
     
-    /* Slow white LED blink */
+    /* Slow blue LED blink */
     if (++blink_counter > 5000U)
     {
-        GPIO_PORTF_DATA_R ^= (GPIO_PIN_1 | GPIO_PIN_2 | GPIO_PIN_3);
+        //GPIO_PORTF_DATA_R ^= (GPIO_PIN_1 | GPIO_PIN_2 | GPIO_PIN_3);
+        led_blue_toggle ();
         blink_counter = 0U;
     }
 }
@@ -393,7 +395,7 @@ static void indicate_streaming(void)
 {
     /* Green LED solid on during streaming */
     PSO_LEDGreenOn();
-    PSO_LEDRedOff();
+    // PSO_LEDRedOff();
 }
 
 /* Indicate streaming finished successfully */
@@ -422,4 +424,5 @@ static void indicate_error(void)
         PSO_LEDRedOff();
         SysCtlDelay(SysCtlClockGet() / 6U);
     }
+
 }
