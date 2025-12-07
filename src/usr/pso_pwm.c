@@ -43,6 +43,20 @@
 #include "hw_memmap.h"      /* Macros defining the memory map of the device. */
 #include "tm4c123gh6pm.h"	/* Interrupt and register assignments on the Tiva C LauchPad board */
 #include "pso_pwm.h"
+#include "pso_timing.h"
+#include <string.h>
+
+/* PWM Profile Configuration */
+#define PROFILE_DURATION_MS     30000U  /* 30 seconds total profile duration */
+#define TRAPEZOID_RAMP_MS       5000U   /* 5 seconds ramp up/down */
+#define TRAPEZOID_HOLD_MS       20000U  /* 20 seconds hold at max */
+#define LINEAR_DURATION_MS      30000U  /* 30 seconds linear ramp */
+#define STEP_INTERVAL_MS        5000U   /* 5 seconds between steps */
+#define STEP_VALUES             {0, 25, 50, 75, 100, 75, 50, 25, 0}
+
+/* Current throttle position */
+static uint8_t current_throttle = 0U;
+static pwm_profile_t selected_profile = PWM_PROFILE_TRAPEZOID;
 
 /*****************************************************************************
  * PWM TIMING MACROS (25ns clock period)
@@ -323,4 +337,175 @@ uint8_t fun_trapezoid(void)
     }
 
     return returnval;
+}
+
+
+
+/**
+ * @brief Execute trapezoidal speed profile
+ * @param elapsed_ms Time elapsed since profile start
+ * @return 1 if profile complete, 0 otherwise
+ */
+uint8_t execute_trapezoid_profile(uint32_t elapsed_ms)
+{
+    if (elapsed_ms >= PROFILE_DURATION_MS)
+    {
+        pwm_set_throttle(0);
+        return 1U;  // Profile complete
+    }
+    
+    if (elapsed_ms < TRAPEZOID_RAMP_MS)
+    {
+        /* Ramp up */
+        uint8_t throttle = (uint8_t)((elapsed_ms * 100UL) / TRAPEZOID_RAMP_MS);
+        pwm_set_throttle(throttle);
+    }
+    else if (elapsed_ms < (TRAPEZOID_RAMP_MS + TRAPEZOID_HOLD_MS))
+    {
+        /* Hold at max */
+        pwm_set_throttle(100);
+    }
+    else
+    {
+        /* Ramp down */
+        uint32_t ramp_down_start = TRAPEZOID_RAMP_MS + TRAPEZOID_HOLD_MS;
+        uint32_t ramp_down_elapsed = elapsed_ms - ramp_down_start;
+        uint8_t throttle = 100 - (uint8_t)((ramp_down_elapsed * 100UL) / TRAPEZOID_RAMP_MS);
+        if (throttle > 100) throttle = 0;
+        pwm_set_throttle(throttle);
+    }
+    
+    return 0U;  // Profile still running
+}
+
+/**
+ * @brief Execute linear ramp profile
+ * @param elapsed_ms Time elapsed since profile start
+ * @return 1 if profile complete, 0 otherwise
+ */
+uint8_t execute_linear_profile(uint32_t elapsed_ms)
+{
+    if (elapsed_ms >= LINEAR_DURATION_MS)
+    {
+        pwm_set_throttle(0);
+        return 1U;
+    }
+    
+    /* Linear ramp from 0 to 100% over profile duration */
+    uint8_t throttle = (uint8_t)((elapsed_ms * 100UL) / LINEAR_DURATION_MS);
+    if (throttle > 100) throttle = 100;
+    
+    pwm_set_throttle(throttle);
+    return 0U;
+}
+
+/**
+ * @brief Execute step profile
+ * @param elapsed_ms Time elapsed since profile start
+ * @return 1 if profile complete, 0 otherwise
+ */
+uint8_t execute_step_profile(uint32_t elapsed_ms)
+{
+    static const uint8_t step_values[] = STEP_VALUES;
+    static const uint8_t num_steps = sizeof(step_values) / sizeof(step_values[0]);
+    
+    if (elapsed_ms >= (STEP_INTERVAL_MS * num_steps))
+    {
+        pwm_set_throttle(0);
+        return 1U;
+    }
+    
+    /* Determine current step */
+    uint8_t current_step = elapsed_ms / STEP_INTERVAL_MS;
+    if (current_step >= num_steps) current_step = num_steps - 1;
+    
+    pwm_set_throttle(step_values[current_step]);
+    return 0U;
+}
+
+/**
+ * @brief Execute custom profile (extend for custom implementations)
+ * @param elapsed_ms Time elapsed since profile start
+ * @return 1 if profile complete, 0 otherwise
+ */
+uint8_t execute_custom_profile(uint32_t elapsed_ms)
+{
+    /* Custom profile implementation */
+    if (elapsed_ms >= PROFILE_DURATION_MS)
+    {
+        pwm_set_throttle(0);
+        return 1U;
+    }
+    
+    /* Example: Sine wave profile */
+    // uint8_t throttle = 50 + (uint8_t)(50 * sin(2 * 3.14159 * elapsed_ms / PROFILE_DURATION_MS));
+    
+    /* For now, use trapezoid as default */
+    return execute_trapezoid_profile(elapsed_ms);
+}
+
+/**
+ * @brief Select PWM profile based on button presses or configuration
+ * @return Selected profile type
+ */
+pwm_profile_t select_pwm_profile(void)
+{
+    /* Read profile selection from switches or configuration */
+    /* For now, default to trapezoid */
+    return PWM_PROFILE_TRAPEZOID;
+    
+    /* Example for switch-based selection:
+    if (is_sw1_pressed() && is_sw2_pressed()) return PWM_PROFILE_CUSTOM;
+    else if (is_sw1_pressed()) return PWM_PROFILE_LINEAR;
+    else if (is_sw2_pressed()) return PWM_PROFILE_STEP;
+    else return PWM_PROFILE_TRAPEZOID;
+    */
+}
+
+/**
+ * @brief Get profile name as string
+ * @param profile Profile type
+ * @return Profile name string
+ */
+const char* get_profile_name(pwm_profile_t profile)
+{
+    switch (profile)
+    {
+        case PWM_PROFILE_TRAPEZOID: return "Trapezoid";
+        case PWM_PROFILE_LINEAR:    return "Linear";
+        case PWM_PROFILE_STEP:      return "Step";
+        case PWM_PROFILE_CUSTOM:    return "Custom";
+        default:                    return "Unknown";
+    }
+}
+
+/**
+ * @brief Set throttle value and update PWM hardware
+ * @param throttle Throttle percentage (0-100)
+ */
+void pwm_set_throttle(uint8_t throttle)
+{
+    if (throttle > 100) throttle = 100;
+    current_throttle = throttle;
+    
+    /* Update PWM hardware */
+    set_pwm_position(throttle);
+}
+
+/**
+ * @brief Get current throttle value
+ * @return Current throttle percentage
+ */
+uint8_t pwm_get_current_throttle(void)
+{
+    return current_throttle;
+}
+
+/**
+ * @brief Initialize PWM profile system
+ */
+void pwm_profile_init(void)
+{
+    current_throttle = 0U;
+    selected_profile = PWM_PROFILE_TRAPEZOID;
 }

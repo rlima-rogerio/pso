@@ -69,16 +69,3 @@ uint8_t uartBatchWrite (uint32_t ui32Base, uint16_t* txBuffer, const uint8_t byt
     return returnval;
 }
 
-
-/*******************************************************************************
-* Function Name  : i2cBatchRead
-* Input          : uint8_t bytesToRead,
-* Output         : uint8_t* rxBuffer
-* Return         : 1 if success, 0 if fail
-* Description    : Reads a pre-defined number of bytes (bytesToRead) stored
-*                  in (rxBuffer).
-*******************************************************************************/
-// uint8_t i2cBatchRead (uint32_t ui32Base, uint8_t* rxBuffer, uint8_t bytesToRead)
-// {
-
-// }

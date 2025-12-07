@@ -23,8 +23,7 @@
 #include "hw_uart.h"
 #include "pso_init.h"
 #include "pso_uart.h"
-//#include "hw_ints.h"
-#include "diskio.h" /* FatFs timer - disk_timerproc () */
+// #include "diskio.h" /* FatFs timer - disk_timerproc () */
 #include "pso_pwm.h" /* Function generator - inc/dec funcs */
 #include "pso_timing.h"
 #include "fifo.h"
@@ -43,10 +42,6 @@ volatile uint32_t adc1_buffer[3];      /* Ay -  Az - I_m */
 uint32_t delta;
 uint32_t wt1cpp0_tav_buffer;  /* RPM */
 
-/* Variáveis globais modificadas */
-// volatile uint32_t adc0_buffer[3];
-// volatile uint32_t adc1_buffer[3];
-// volatile uint8_t g_timer_a0_scan_flag = 0U;  // Mantém compatibilidade
 volatile uint32_t g_rpm_raw_count = 0;
 volatile uint32_t g_rpm_ready_flag = 0U;
 volatile uint32_t g_rpm_value = 0;  
@@ -125,46 +120,6 @@ void WTimer5BIntHandler(void)
 	TimerIntClear(WTIMER5_BASE, TIMER_CAPB_EVENT);
 
 }
-
-/**********************************/
-
-// void ADC0SS1IntHandler(void)
-// {
-//     uint8_t k;
-    
-//     /* Coleta rápida de dados - SEM processamento */
-//     for (k = 0U; k < 3U; k++)
-//     {
-//         adc0_buffer[k] = ADC0_SSFIFO1_R;
-//         adc1_buffer[k] = ADC1_SSFIFO1_R;
-//     }
-    
-//     /* Limpa flag de interrupção */
-//     ADC0_ISC_R = ADC_ISC_IN1;
-    
-//     /* Sinaliza que tem dados novos */
-//     g_timer_a0_scan_flag = 1U;
-    
-//     /* LED indicador de atividade (opcional) */
-//     // GPIO_PORTF_DATA_R ^= GPIO_PIN_2;
-// }
-
-// void Timer3AIntHandler(void)
-// {
-//     static uint32_t last_count = 0;
-    
-//     /* Limpa interrupção */
-//     TIMER3_ICR_R |= TIMER_ICR_TATOCINT;
-    
-//     /* Atualiza contagem RPM */
-//     g_rpm_raw_count = WTIMER1_TAV_R - last_count;
-//     last_count = WTIMER1_TAV_R;
-//     g_rpm_ready_flag = 1U;
-    
-//     /* Atualiza temporização do sistema (opcional) */
-//     // Não é mais necessário com SysTick
-// }
-/**********************************/
 
 void Timer3AIntHandler(void)
 {
@@ -260,21 +215,6 @@ void ADC0SS1IntHandler(void)
 	ADC0_ISC_R = ADC_ISC_IN1;
 
 	g_timer_a0_scan_flag = 1U;
-
-//	if (record_sd)
-//	{
-//		packet_data (&dp);
-//		copy_data(uart_tx_buffer, &dp);
-//		for (k = 0U; k < PACKET_LENGTH; k++)
-//		{
-//			if (! fifo_put (&g_fifo_bang, (uint8_t)uart_tx_buffer[k]))
-//			{
-//				break; /* FULL */
-//				k;
-//			}
-//		}
-//		state = 3U;
-//	}
 
 //	GPIO_PORTF_DATA_R ^= GPIO_PIN_2;    /* Blue LED on PF2 */
 }

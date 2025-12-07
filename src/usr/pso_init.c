@@ -118,35 +118,6 @@ void myUART2Config_Init()
     HWREG(GPIO_PORTD_BASE + GPIO_O_DEN)   |= (GPIO_PIN_6 | GPIO_PIN_7);
     HWREG(GPIO_PORTD_BASE + GPIO_O_PCTL)  |= 0x11000000;
 
-    /* Terminar a inicializa��o na m�o... */
-
-	/* Enable UART Module 1 */
-    //ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_UART1);
-
-	/* Sets the pins for UART use */
-    //ROM_GPIOPinTypeUART(UART1_BASE, GPIO_PIN_0 | GPIO_PIN_1);
-
-    /* Configures the pin function mux */
-    //GPIOPinConfigure(GPIO_PB0_U1RX);
-
-	/* Disables UART prior configuration */
-	//ROM_UARTDisable(UART1_BASE);
-
-    /* Sets up the serial protocol: 9600-8N1 */
- //   ROM_UARTConfigSetExpClk(UART1_BASE,
-//                            SysCtlClockGet(),
-//                            9600,
-//                            UART_CONFIG_WLEN_8 | UART_CONFIG_PAR_NONE | UART_CONFIG_STOP_ONE);
-
-    /* Enable UART after configuration */
-//    UARTEnable(UART1_BASE);
-
-    /* MODIFICAR ESSAS FUN��ES PARA TENTAR USAR NA CONFIGURA��O
-     * ----------------------------------------------------------
-     * ROM_GPIODirModeSet(GPIO_PORTF_BASE, GPIO_PIN_4|GPIO_PIN_0, GPIO_DIR_MODE_IN);
-     * ROM_GPIOPadConfigSet(GPIO_PORTF_BASE, GPIO_PIN_4|GPIO_PIN_0, GPIO_STRENGTH_2MA, GPIO_PIN_TYPE_STD_WPU);
-     *
-     * */
 
 }
 
@@ -225,52 +196,6 @@ void PSO_Timers()
 	IntMasterEnable();
 
 	TimerEnable(TIMER0_BASE, TIMER_A);
-
-
-    /*// Timer 3 config
-	SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER3);
-	TimerConfigure(TIMER3_BASE, TIMER_CFG_PERIODIC);
-    //
-	timer3_period = (SysCtlClockGet() / freq3);
-	TimerLoadSet(TIMER0_BASE, TIMER_A, timer3_period - 1);
-    //
-	IntEnable(INT_TIMER3A);
-	TimerIntEnable(TIMER3_BASE, TIMER_TIMA_TIMEOUT);
-	IntMasterEnable();
-	//
-	TimerEnable(TIMER3_BASE, TIMER_A);
-	*/
-
-//	ROM_TimerControlEvent(WTIMER1_BASE,	TIMER_BOTH,TIMER_EVENT_BOTH_EDGES);
-//	ROM_TimerControlEvent(WTIMER5_BASE,	TIMER_BOTH,TIMER_EVENT_BOTH_EDGES);
-//
-//	ROM_TimerConfigure(WTIMER1_BASE, TIMER_CFG_SPLIT_PAIR|TIMER_CFG_A_CAP_TIME|TIMER_CFG_B_CAP_TIME);	// Timer 1-A and -B events edge-timer
-//	ROM_TimerConfigure(WTIMER5_BASE, TIMER_CFG_SPLIT_PAIR|TIMER_CFG_A_CAP_TIME|TIMER_CFG_B_CAP_TIME);	// Timer 1-A and -B events edge-timer
-//	//
-//	ROM_GPIOPinTypeTimer(GPIO_PORTC_BASE,GPIO_PIN_6);	// Set Port PC6 as Capture
-//	ROM_GPIOPinConfigure(GPIO_PC6_WT1CCP0);
-//
-//	ROM_GPIOPinTypeTimer(GPIO_PORTC_BASE,GPIO_PIN_7);	// Set Port PC7 as Capture
-//	ROM_GPIOPinConfigure(GPIO_PC7_WT1CCP1);
-//
-//	ROM_GPIOPinTypeTimer(GPIO_PORTD_BASE,GPIO_PIN_6);	// Set Port PD6 as Capture
-//	ROM_GPIOPinConfigure(GPIO_PD6_WT5CCP0);
-//
-//	ROM_GPIOPinTypeTimer(GPIO_PORTD_BASE,GPIO_PIN_7);	// Set Port PD7 as Capture
-//	ROM_GPIOPinConfigure(GPIO_PD7_WT5CCP1);
-//
-//	TimerSynchronize(TIMER0_BASE, WTIMER_1A_SYNC|WTIMER_1B_SYNC|WTIMER_5A_SYNC|WTIMER_5B_SYNC);
-//
-//	// Timer Interrupt Configuration
-//	ROM_IntEnable(INT_WTIMER1A); 	// Enable Wide Timer 1-A Interrupt (Macro shall be used individually)
-//	ROM_IntEnable(INT_WTIMER1B); 	// Enable Wide Timer 1-B Interrupt (Macro shall be used individually)
-//	ROM_IntEnable(INT_WTIMER5A); 	// Enable Wide Timer 5-A Interrupt (Macro shall be used individually)
-//	ROM_IntEnable(INT_WTIMER5B); 	// Enable Wide Timer 5-B Interrupt (Macro shall be used individually)
-//	ROM_TimerIntEnable(WTIMER1_BASE, TIMER_CAPA_EVENT|TIMER_CAPB_EVENT);
-//	ROM_TimerIntEnable(WTIMER5_BASE, TIMER_CAPA_EVENT|TIMER_CAPB_EVENT);
-//	ROM_TimerEnable(WTIMER1_BASE, TIMER_BOTH);
-//	ROM_TimerEnable(WTIMER5_BASE, TIMER_BOTH);
-//	ROM_IntMasterEnable();
 
 }
 

@@ -27,6 +27,14 @@ void SysTick_Handler(void)
     g_system_tick_counter++;
 }
 
+
+/* Obtém ticks atual em ms */
+uint32_t get_systick_ms(void)
+{
+    return g_system_tick_counter;
+}
+
+
 /**
  * @brief Inicializa o sistema de temporização
  */
