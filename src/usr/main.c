@@ -37,6 +37,7 @@
 #include "pso_uart.h"
 #include "pso_led.h"
 #include "pso_data.h"
+#include "pso_timing.h"
 #include "adc.h"
 #include "pso_pwm.h"
 #include "fifo.h"
@@ -80,9 +81,10 @@ extern uint8_t fix_rpm_start_acq;
  * GLOBAL VARIABLES
  ******************************************************************************/
 uint16_t scan_period_actual;
-uint8_t streaming_active = 0U;          /* UART streaming active flag */
-uint8_t enable_data_capture = 1U;       /* Enable data capture flag */
-uint8_t fix_rpm_start_acq = 0U;         /* Flag to fix RPM and start acquisition */
+//uint8_t streaming_active = 0U;          /* UART streaming active flag */
+//uint8_t enable_data_capture = 1U;       /* Enable data capture flag */
+//uint8_t fix_rpm_start_acq = 0U;         /* Flag to fix RPM and start acquisition */
+//uint32_t sample_counter = 0U;  // ADICIONE ESTA LINHA
 
 /*******************************************************************************
  * FUNCTION PROTOTYPES
@@ -107,74 +109,204 @@ static void indicate_error(void);
 /*******************************************************************************
  * MAIN FUNCTION
  ******************************************************************************/
+
+// int main(void)
+// {
+//     sys_state_t sys_state = SYS_STATE_IDLE;
+
+//     /* Initialize system peripherals and configurations */
+//     system_init();
+
+//     /***************************************************************************
+//      * MAIN LOOP
+//      * 
+//      * System operation:
+//      * 1. Wait for start command (SW1 press)
+//      * 2. Initialize streaming parameters
+//      * 3. Stream data continuously via UART
+//      * 4. Execute PWM trapezoid profile during streaming
+//      * 5. Stop streaming on command (SW2 press or trapezoid complete)
+//      **************************************************************************/
+//     while (1)
+//     {
+//         /* Capture current scan period for timing calculations */
+//         scan_period_actual = TIMER3_TAR_R;
+
+//         /* Process data when scan timer flag is set */
+//         if (g_timer_a0_scan_flag)
+//         {
+//             g_timer_a0_scan_flag = 0U;
+
+//             /* Prepare data packet for transmission */
+//             packet_data(&dp);
+//             copy_data(uart_tx_buffer, &dp);
+
+//             /* Stream data via UART if streaming is active */
+//             stream_data_uart();
+
+//             /* Handle data capture and buffering */
+//             handle_data_capture();
+
+//             /* Execute system state machine */
+//             switch (sys_state)
+//             {
+//                 case SYS_STATE_IDLE:
+//                     sys_state = state_idle();
+//                     break;
+
+//                 case SYS_STATE_INIT:
+//                     sys_state = state_init();
+//                     break;
+
+//                 case SYS_STATE_STREAMING:
+//                     sys_state = state_streaming();
+//                     break;
+
+//                 case SYS_STATE_STOPPING:
+//                     sys_state = state_stopping();
+//                     break;
+
+//                 case SYS_STATE_ERROR:
+//                     sys_state = state_error();
+//                     break;
+
+//                 default:
+//                     /* Invalid state - return to idle */
+//                     sys_state = SYS_STATE_IDLE;
+//                     break;
+//             }
+
+//             /* Update index with actual scan time */
+//             dp.index = TIMER3_TAR_R - scan_period_actual;
+//         }
+//     }
+// }
+
+/*******************************************************************************
+ * MAIN FUNCTION (MODIFICADO)
+ ******************************************************************************/
 int main(void)
 {
     sys_state_t sys_state = SYS_STATE_IDLE;
-
+    static uint32_t last_stream_time = 0;
+    static uint32_t last_sample_time = 0;
+    static uint32_t sample_counter = 0;
+    
     /* Initialize system peripherals and configurations */
     system_init();
-
+    
+    /* Inicializa temporização */
+    //timing_init(SysCtlClockGet());
+    //timing_configure(RATE_1000_HZ, 0);  // Loop principal a 1 kHz
+    
     /***************************************************************************
-     * MAIN LOOP
+     * MAIN LOOP OTIMIZADO
      * 
-     * System operation:
-     * 1. Wait for start command (SW1 press)
-     * 2. Initialize streaming parameters
-     * 3. Stream data continuously via UART
-     * 4. Execute PWM trapezoid profile during streaming
-     * 5. Stop streaming on command (SW2 press or trapezoid complete)
+     * Estrutura:
+     * 1. Processamento em alta prioridade (ADC samples @ 125 kHz)
+     * 2. Loop de controle principal @ 1 kHz
+     * 3. Streaming de dados @ taxa configurável (ex: 100 Hz)
+     * 4. Tarefas de baixa prioridade
      **************************************************************************/
     while (1)
     {
-        /* Capture current scan period for timing calculations */
-        scan_period_actual = TIMER3_TAR_R;
-
-        /* Process data when scan timer flag is set */
+        /* 1. PROCESSAMENTO DE AMOSTRAS ADC (alta prioridade) */
         if (g_timer_a0_scan_flag)
         {
             g_timer_a0_scan_flag = 0U;
-
-            /* Prepare data packet for transmission */
+            
+            /* Coleta dados do ADC (já feito na ISR) */
+            /* Apenas atualiza buffer local se necessário */
+            sample_counter++;
+            
+            /* Buffer simples para média (opcional) */
+            static uint16_t sample_buffer[10];
+            static uint8_t buffer_index = 0;
+            
             packet_data(&dp);
             copy_data(uart_tx_buffer, &dp);
-
-            /* Stream data via UART if streaming is active */
-            stream_data_uart();
-
-            /* Handle data capture and buffering */
-            handle_data_capture();
-
-            /* Execute system state machine */
+            
+            /* Armazena para média/processamento posterior */
+            // sample_buffer[buffer_index] = adc_value;
+            buffer_index = (buffer_index + 1) % 10;
+        }
+        
+        /* 2. LOOP DE CONTROLE PRINCIPAL (1 kHz) */
+        if (check_interval_ms(1))
+        {
+            uint32_t current_time = get_system_ticks();
+            
+            /* Máquina de estados principal */
             switch (sys_state)
             {
                 case SYS_STATE_IDLE:
                     sys_state = state_idle();
                     break;
-
+                    
                 case SYS_STATE_INIT:
                     sys_state = state_init();
                     break;
-
+                    
                 case SYS_STATE_STREAMING:
                     sys_state = state_streaming();
                     break;
-
+                    
                 case SYS_STATE_STOPPING:
                     sys_state = state_stopping();
                     break;
-
+                    
                 case SYS_STATE_ERROR:
                     sys_state = state_error();
                     break;
-
+                    
                 default:
-                    /* Invalid state - return to idle */
                     sys_state = SYS_STATE_IDLE;
                     break;
             }
-
-            /* Update index with actual scan time */
-            dp.index = TIMER3_TAR_R - scan_period_actual;
+            
+            /* 3. STREAMING DE DADOS (executa a cada 10ms = 100 Hz) */
+            //if ((current_time - last_stream_time) >= 10)  // 100 Hz
+            if (check_interval_ms(10))  // 100 Hz
+            {
+                last_stream_time = current_time;
+                
+                if (streaming_active && enable_data_capture)
+                {
+                    /* Envia pacote via UART */
+                    uartBatchWrite(UART0_BASE, uart_tx_buffer, PACKET_LENGTH);
+                    
+                    /* Toggle LED para indicar atividade */
+                    led_green_toggle();
+                }
+            }
+            
+            /* 4. ATUALIZAÇÃO DE DADOS (executa a cada 2ms = 500 Hz) */
+            if ((current_time - last_sample_time) >= 2)  // 500 Hz
+            {
+                last_sample_time = current_time;
+                
+                /* Processamento de dados filtrados/médias */
+                if (fix_rpm_start_acq && enable_data_capture)
+                {
+                    /* Buffer FIFO para não perder dados */
+                    handle_data_capture();
+                }
+            }
+            
+            /* Atualiza índice com tempo real (para debugging) */
+            dp.index = timing_get_execution_count();
+        }
+        
+        /* 5. TAREFAS DE BAIXA PRIORIDADE (executa quando possível) */
+        /* Ex: Verificação de botões, monitoramento, etc. */
+        static uint32_t last_low_priority = 0;
+        if ((get_system_ticks() - last_low_priority) > 50)  // 20 Hz
+        {
+            last_low_priority = get_system_ticks();
+            
+            /* Verificações não críticas aqui */
+            // check_system_health();
+            // update_status_leds();
         }
     }
 }
@@ -281,22 +413,22 @@ static sys_state_t state_idle(void)
  * 
  * Initialize streaming parameters and prepare for data transmission.
  ******************************************************************************/
-static sys_state_t state_init(void)
-{
-    /* Reset streaming flags */
-    fix_rpm_start_acq = 1U;
-    enable_data_capture = 1U;
-    streaming_active = 1U;
-
-    /* Clear FIFOs */
-    fifo_init(&g_fifo_ping);
-    fifo_init(&g_fifo_pong);
-
-    /* Indicate successful initialization */
-    //PSO_LEDGreenOn();
-    
-    return SYS_STATE_STREAMING;
-}
+//static sys_state_t state_init(void)
+//{
+//    /* Reset streaming flags */
+//    fix_rpm_start_acq = 1U;
+//    enable_data_capture = 1U;
+//    streaming_active = 1U;
+//
+//    /* Clear FIFOs */
+//    fifo_init(&g_fifo_ping);
+//    fifo_init(&g_fifo_pong);
+//
+//    /* Indicate successful initialization */
+//    //PSO_LEDGreenOn();
+//
+//    return SYS_STATE_STREAMING;
+//}
 
 /*******************************************************************************
  * STATE MACHINE: STREAMING STATE
@@ -381,6 +513,7 @@ static void indicate_standby(void)
 {
     static uint16_t blink_counter = 0U;
     
+    led_blue_toggle ();
     /* Slow blue LED blink */
     if (++blink_counter > 5000U)
     {
@@ -426,3 +559,61 @@ static void indicate_error(void)
     }
 
 }
+
+/*******************************************************************************
+ * NOVAS FUNÇÕES AUXILIARES
+ ******************************************************************************/
+
+/* Estado INIT modificado */
+static sys_state_t state_init(void)
+{
+    /* Reset streaming flags */
+    fix_rpm_start_acq = 1U;
+    enable_data_capture = 1U;
+    streaming_active = 1U;
+    
+    /* Configura taxas específicas */
+    timing_configure(RATE_1000_HZ, 0);  // Loop principal a 1 kHz
+    
+    /* Reseta contadores */
+    timing_reset();
+    sample_counter = 0;
+    
+    /* Clear FIFOs */
+    fifo_init(&g_fifo_ping);
+    fifo_init(&g_fifo_pong);
+    
+    /* Indicate successful initialization */
+    PSO_LEDGreenOn();
+    
+    return SYS_STATE_STREAMING;
+}
+
+/* Função para monitoramento do sistema */
+static void monitor_system_performance(void)
+{
+    static uint32_t last_monitor_time = 0;
+    uint32_t current_time = get_system_ticks();
+    
+    if ((current_time - last_monitor_time) >= 1000)  // A cada 1 segundo
+    {
+        last_monitor_time = current_time;
+        
+        /* Log de performance */
+        float actual_rate = timing_get_actual_rate_hz();
+        uint32_t missed = timing_get_missed_deadlines();
+        uint32_t total = timing_get_execution_count();
+        
+        /* Pode enviar via UART para debugging */
+        // printf("Rate: %.1f Hz, Missed: %lu, Total: %lu\n", 
+        //        actual_rate, missed, total);
+        
+        /* Reset se muitos deadlines perdidos */
+        if (missed > 10)
+        {
+            // System might be overloaded
+            PSO_LEDRedOn();
+        }
+    }
+}
+

@@ -26,11 +26,13 @@
 //#include "hw_ints.h"
 #include "diskio.h" /* FatFs timer - disk_timerproc () */
 #include "pso_pwm.h" /* Function generator - inc/dec funcs */
+#include "pso_timing.h"
 #include "fifo.h"
 #include "pso_data.h"
 #include "ulink.h"
 #include "ulink_pso.h"
 #include "ulink_types.h"
+
 
 extern uart_raw_data_t g_uart0_data; /*Defined in "pos_uart.c" */
 uint8_t g_timer_a0_scan_flag = 0U;   /* Main: 500k/4 = 125 kHz scan rate */
@@ -40,6 +42,14 @@ volatile uint32_t adc0_buffer[3];      /* Ax - Thr - V_m */
 volatile uint32_t adc1_buffer[3];      /* Ay -  Az - I_m */
 uint32_t delta;
 uint32_t wt1cpp0_tav_buffer;  /* RPM */
+
+/* Variáveis globais modificadas */
+// volatile uint32_t adc0_buffer[3];
+// volatile uint32_t adc1_buffer[3];
+// volatile uint8_t g_timer_a0_scan_flag = 0U;  // Mantém compatibilidade
+volatile uint32_t g_rpm_raw_count = 0;
+volatile uint32_t g_rpm_ready_flag = 0U;
+volatile uint32_t g_rpm_value = 0;  
 
 /* Debug */
 uint16_t discard_0, discard_1;
@@ -116,6 +126,46 @@ void WTimer5BIntHandler(void)
 
 }
 
+/**********************************/
+
+// void ADC0SS1IntHandler(void)
+// {
+//     uint8_t k;
+    
+//     /* Coleta rápida de dados - SEM processamento */
+//     for (k = 0U; k < 3U; k++)
+//     {
+//         adc0_buffer[k] = ADC0_SSFIFO1_R;
+//         adc1_buffer[k] = ADC1_SSFIFO1_R;
+//     }
+    
+//     /* Limpa flag de interrupção */
+//     ADC0_ISC_R = ADC_ISC_IN1;
+    
+//     /* Sinaliza que tem dados novos */
+//     g_timer_a0_scan_flag = 1U;
+    
+//     /* LED indicador de atividade (opcional) */
+//     // GPIO_PORTF_DATA_R ^= GPIO_PIN_2;
+// }
+
+// void Timer3AIntHandler(void)
+// {
+//     static uint32_t last_count = 0;
+    
+//     /* Limpa interrupção */
+//     TIMER3_ICR_R |= TIMER_ICR_TATOCINT;
+    
+//     /* Atualiza contagem RPM */
+//     g_rpm_raw_count = WTIMER1_TAV_R - last_count;
+//     last_count = WTIMER1_TAV_R;
+//     g_rpm_ready_flag = 1U;
+    
+//     /* Atualiza temporização do sistema (opcional) */
+//     // Não é mais necessário com SysTick
+// }
+/**********************************/
+
 void Timer3AIntHandler(void)
 {
 	/**************************************************************************
@@ -131,6 +181,8 @@ void Timer3AIntHandler(void)
 	 *
 	 *************************************************************************/
     static uint32_t tav_1 = 0U; /* Previous edge count */
+    static uint32_t last_rpm_count = 0;
+    uint32_t current_count;
 
 
     /**************************************************************************
@@ -149,11 +201,19 @@ void Timer3AIntHandler(void)
 	delta = wt1cpp0_tav_buffer - tav_1;
 	tav_1 = wt1cpp0_tav_buffer;
 
+    /* Calcula RPM */
+    current_count = WTIMER1_TAV_R;
+    g_rpm_value = (current_count - last_rpm_count) * 60 * 10;
+    last_rpm_count = current_count;
+
+    /* Incrementa contador de ms */
+    g_system_ms_counter++;
+
 	g_timer_a3_scan_flag ^= 0xFF;
 
 
 
-    disk_timerproc (); /* FatFs timer */
+    // disk_timerproc (); /* FatFs timer */
     increment ();      /* Used in PWM */
 
 //	GPIO_PORTF_DATA_R ^= GPIO_PIN_2;

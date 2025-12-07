@@ -118,7 +118,7 @@ void myUART2Config_Init()
     HWREG(GPIO_PORTD_BASE + GPIO_O_DEN)   |= (GPIO_PIN_6 | GPIO_PIN_7);
     HWREG(GPIO_PORTD_BASE + GPIO_O_PCTL)  |= 0x11000000;
 
-    /* Terminar a inicialização na mão... */
+    /* Terminar a inicializaï¿½ï¿½o na mï¿½o... */
 
 	/* Enable UART Module 1 */
     //ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_UART1);
@@ -141,7 +141,7 @@ void myUART2Config_Init()
     /* Enable UART after configuration */
 //    UARTEnable(UART1_BASE);
 
-    /* MODIFICAR ESSAS FUNÇÕES PARA TENTAR USAR NA CONFIGURAÇÃO
+    /* MODIFICAR ESSAS FUNï¿½ï¿½ES PARA TENTAR USAR NA CONFIGURAï¿½ï¿½O
      * ----------------------------------------------------------
      * ROM_GPIODirModeSet(GPIO_PORTF_BASE, GPIO_PIN_4|GPIO_PIN_0, GPIO_DIR_MODE_IN);
      * ROM_GPIOPadConfigSet(GPIO_PORTF_BASE, GPIO_PIN_4|GPIO_PIN_0, GPIO_STRENGTH_2MA, GPIO_PIN_TYPE_STD_WPU);
