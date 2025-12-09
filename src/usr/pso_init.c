@@ -404,243 +404,177 @@ void PSO_ADCConfig()
     NVIC_EN2_R |= 0x0002;
 }
 
-void pso_rpm_config()
+
+/*******************************************************************************
+ * FILENAME: pso_rpm_config() - FIXED VERSION
+ * 
+ * CRITICAL FIXES:
+ * 1. Changed WTIMER1 from CAPTURE mode to proper EDGE-COUNT configuration
+ * 2. Removed unnecessary match register configuration
+ * 3. Simplified interrupt configuration
+ * 
+ * COPY THIS FUNCTION to replace the existing pso_rpm_config() in pso_init.c
+ ******************************************************************************/
+
+void pso_rpm_config(void)
 {
-	/**************************************************************************
-	 * The RPM function is implemented using two (2) timers. One timer is
-	 * configured as "Input Edge-Count Mode" in order to count all the pulses
-	 * applied at the input pin. The second timer is configured as "Periodic"
-	 * with a period of 100 ms and within this interval, it's counted the addi-
-	 * tional pulses received in a time-window of 0.1 second.
-	 *
-	 *
-	 *************************************************************************/
+    /**************************************************************************
+     * RPM MEASUREMENT SYSTEM
+     * -------------------------------------------------------------------------
+     * Uses TWO timers:
+     * 1. Timer3A (16/32-bit) - Periodic interrupt every 100ms to calculate RPM
+     * 2. WTimer1A (32/64-bit) - Edge counter to count pulses on PC6
+     * 
+     * Connection: PC6 = WT1CCP0 = RPM sensor input
+     *************************************************************************/
 
-	/* 11.4.1 Module Initialization - Periodic Timer Mode (T3CCP0 : PB2)     */
-	/**************************************************************************
-	 * 1.0) Enable the Timer 3 using the  RCGGCTIMER register (page 336)
-	 *      16/32-Bit General-Purpose Timer 3 Run Mode Clock Gating Control.
-	 *
-	 *  16/32-Bit General-Purpose Timer Run Mode Clock Gating Control
-	 *  (RCGCTIMER, page 336)
-	 *************************************************************************/
-	SYSCTL_RCGCTIMER_R |= SYSCTL_RCGCTIMER_R3;
-
-	/**************************************************************************
-	 * 1.1) Ensure the timer is disabled (the TAEN bit in the GPTMCTL register
-	 *      is cleared) before making any changes.
-	 *
-	 * GPTM Control (GPTMCTL, page 734)
-	 *************************************************************************/
-	TIMER3_CTL_R &= ~(TIMER_CTL_TAEN);  /* GPTM Timer A Disable */
-
-	/**************************************************************************
-	 * 1.2)  Write the GPTM Configuration Register (GPTMCFG) with a value of
-	 *       0x0000.0000.
-	 *
-	 * GPTM Configuration (GPTMCFG, page 724)
-	 *************************************************************************/
-	TIMER3_CFG_R = TIMER_CFG_32_BIT_TIMER;  // |= TIMER_CFG_16_BIT;
-
-	/**************************************************************************
-	 * 1.3) Configure the TnMR field in the GPTM Timer n Mode Register
-	 *      (GPTMTnMR):
-     *      a)   Write a value of 0x1 for One-Shot mode.
-     *      b)   Write a value of 0x2 for Periodic mode. <=
-     *
-     * 1.4)  Optionally configure the TnSNAPS, TnWOT, TnMTE, and TnCDIRbits in
-     *       the GPTMTnMR register to select whether to capture the value of
-     *       the free-running timer at time-out, use an external trigger to
-     *       start counting, configure an additional trigger or interrupt, and
-     *       count up or down.
-	 *
-	 *       TIMER_TAMR_TAMR_PERIOD : Periodic
-	 *       TIMER_TAMR_TACDIR      : Count Up
-	 *
-	 *  GPTM Timer A Mode (GPTMTAMR, page 726)
-	 *************************************************************************/
-	TIMER3_TAMR_R |= (TIMER_TAMR_TAMR_PERIOD | TIMER_TAMR_TACDIR
-			                                 | TIMER_TAMR_TAILD);
-
-
-	/**************************************************************************
-	 * 1.5) Load the start value into the GPTM Timer n Interval Load
-	 *      Register (GPTMTnILR).
-	 *
-	 *  GPTM Timer A Interval Load (GPTMTAILR, page 753)
-	 *
-	 *  Remark: Any value different from 1s for the period should reflect in
-	 *          the constant used in the calculation of RPM.
-	 *
-	 *  1 step: 40 MHz -> 25 ns
-	 *************************************************************************/
-	TIMER3_TAILR_R = 0x003D0900;    /* 0x02625A00 = 40.000.000 => 1s  */
-                                    /* 0x003D0900 =  4.000.000 => 0.1s */
-
-	/**************************************************************************
-	 * 1.6) If interrupts are required, set the appropriate bits in the GPTM
-	 *      Interrupt Mask Register (GPTMIMR).
-	 *
-	 * GPTM Interrupt Mask (GPTMIMR, page 742)
-	 *************************************************************************/
-	TIMER3_IMR_R |= TIMER_IMR_TATOIM;
-
-	/**************************************************************************
-	 * 1.7) Set the TnEN bit in the GPTMCTL register to enable the timer and
-	 *      start counting.
-	 *
-	 * GPTM Control (GPTMCTL, page 734)
-	 *************************************************************************/
-	TIMER3_CTL_R |= TIMER_CTL_TAEN; /* GPTM Timer A Enable */
-
+    /* ===================================================================== */
+    /* PART 1: Configure Timer3A - Periodic 100ms interrupt                 */
+    /* ===================================================================== */
+    
+    /**************************************************************************
+     * 1.0) Enable Timer3 clock
+     *************************************************************************/
+    SYSCTL_RCGCTIMER_R |= SYSCTL_RCGCTIMER_R3;
+    while(!(SYSCTL_PRTIMER_R & SYSCTL_PRTIMER_R3)) {}  /* Wait until ready */
 
     /**************************************************************************
-     * 1.8) Enable Master Interrupt for 16/32-Bit Timer 3A.
-     *        T3CCP0 = 51 -> bit 03 in EN1
-     *
-     *  Interrupt 32-63 Set Enable (EN1, page 140)
+     * 1.1) Disable timer before configuration
      *************************************************************************/
-    NVIC_EN1_R = 0x00000008;
+    TIMER3_CTL_R &= ~TIMER_CTL_TAEN;
 
-
-
-
-
-    /*=======================================================================*/
-	/* 11.4.3 Module Initialization - Input Edge-Count Mode (WT1CCP0 : PC6)  */
-
-
-    /*************************************************************************
-     * 0.1) Port configuration for the proper use as Input Edge-Count
-     *      (WT1CCP0-PC6).
-     *
-     *      It's choose the alternate function for the PC6.
-     *
-     *      Refer to Table 23-5 (page 1344) to check the appropriate encoding
-     *      for the bit fields in the register GPIOPCTL.
-     *
-     * GPIO Alternate Function Select (GPIOAFSEL, page 668)
-     * GPIO Port Control (GPIOPCTL, page 685)
+    /**************************************************************************
+     * 1.2) Configure as 32-bit timer
      *************************************************************************/
-    //GPIO_PORTC_LOCK_R  = GPIO_LOCK_KEY;      /* Unlocks the GPIO_CR register */
-    //GPIO_PORTC_CR_R   |= GPIO_PIN_6;         /* Allow changes to PC6         */
-    //SYSCTL_RCGCGPIO_R |= SYSCTL_RCGC2_GPIOC;
-    SYSCTL_RCGCGPIO_R |= SYSCTL_RCGCGPIO_R2; /* GPIO Port C Run Mode Clock   */
-    										 /* Gating Control               */
-    GPIO_PORTC_DIR_R &= ~(GPIO_PIN_6);                 /* 0: PC6 as input   */
-    GPIO_PORTC_AFSEL_R |= GPIO_PIN_6;        /* Alternate function for PC6   */
-    GPIO_PORTC_PUR_R |=  GPIO_PIN_6;    /* Enable pull up resistors for PC6 */
-    GPIO_PORTC_DEN_R |= GPIO_PIN_6;               /* Enable digital pins PC6*/
-    GPIO_PORTC_AMSEL_R &= ~(GPIO_PIN_6);          /* Disable analog function */
+    TIMER3_CFG_R = TIMER_CFG_32_BIT_TIMER;  /* 0x00000000 */
+
+    /**************************************************************************
+     * 1.3) Configure as Periodic mode, Count UP
+     *************************************************************************/
+    TIMER3_TAMR_R = TIMER_TAMR_TAMR_PERIOD | TIMER_TAMR_TACDIR;
+
+    /**************************************************************************
+     * 1.4) Load interval for 100ms (0.1 second)
+     *      System Clock = 40 MHz
+     *      Count = 40,000,000 / 10 = 4,000,000 = 0x003D0900
+     *************************************************************************/
+    TIMER3_TAILR_R = 4000000 - 1;  /* 0x003D08FF */
+
+    /**************************************************************************
+     * 1.5) Enable timeout interrupt
+     *************************************************************************/
+    TIMER3_IMR_R |= TIMER_IMR_TATOIM;
+
+    /**************************************************************************
+     * 1.6) Enable Timer3A
+     *************************************************************************/
+    TIMER3_CTL_R |= TIMER_CTL_TAEN;
+
+    /**************************************************************************
+     * 1.7) Enable Timer3A interrupt in NVIC
+     *      Timer3A = IRQ 35 = bit 3 in EN1
+     *************************************************************************/
+    NVIC_EN1_R |= (1 << 3);  /* Enable interrupt 35 */
+
+
+    /* ===================================================================== */
+    /* PART 2: Configure WTimer1A - Edge Counter on PC6                     */
+    /* ===================================================================== */
+
+    /**************************************************************************
+     * 2.0) Configure GPIO PC6 for WT1CCP0 input
+     *************************************************************************/
+    SYSCTL_RCGCGPIO_R |= SYSCTL_RCGCGPIO_R2;  /* Enable Port C clock */
+    while(!(SYSCTL_PRGPIO_R & SYSCTL_PRGPIO_R2)) {}  /* Wait until ready */
+    
+    GPIO_PORTC_DIR_R &= ~GPIO_PIN_6;         /* PC6 as input */
+    GPIO_PORTC_AFSEL_R |= GPIO_PIN_6;        /* Enable alternate function */
+    GPIO_PORTC_DEN_R |= GPIO_PIN_6;          /* Enable digital */
+    GPIO_PORTC_PUR_R |= GPIO_PIN_6;          /* Enable pull-up resistor */
+    GPIO_PORTC_AMSEL_R &= ~GPIO_PIN_6;       /* Disable analog */
+    
+    /* Configure PCTL for WT1CCP0 (encoding 7 for PC6) */
     GPIO_PORTC_PCTL_R |= GPIO_PCTL_PC6_WT1CCP0;       /* Port Mux Control 6 */
-    //GPIO_PORTC_LOCK_R = GPIO_LOCK_UNLOCKED; /* The GPIOCR register is locked */
 
     /**************************************************************************
-	 * 1.0) Enable the Wide Timer 0 using the  RCGCWTIMER register.
-	 *
-	 * 32/64-Bit Wide General-Purpose Timer Run Mode Clock Gating Control
-	 * (RCGCWTIMER, page 355)
-	 *************************************************************************/
+     * 2.1) Enable Wide Timer1 clock
+     *************************************************************************/
     SYSCTL_RCGCWTIMER_R |= SYSCTL_RCGCWTIMER_R1;
-
-	/**************************************************************************
-	 * 1.1) Ensure the timer is disabled (the TAEN bit in the GPTMCTL register
-	 *      is cleared) before making any changes.
-	 *
-	 * GPTM Control (GPTMCTL, page 734)
-	 *************************************************************************/
-    WTIMER1_CTL_R &= ~(TIMER_CTL_TAEN);  /* GPTM Timer A Disable */
-
-	/**************************************************************************
-	 * 1.2)  Write the GPTM Configuration (GPTMCFG) register with a value of
-	 *       0x0000.0004. For a 32/64-bit wide timer, this value selects the
-	 *       32-bit timer configuration.
-	 *
-	 * GPTM Configuration (GPTMCFG, page 724)
-	 *************************************************************************/
-    WTIMER1_CFG_R |= TIMER_CFG_16_BIT;  // |= TIMER_CFG_16_BIT;
-
-	/**************************************************************************
-	 * 1.3)  In the GPTM Timer Mode (GPTMTnMR) register, write the TnCMR field
-	 *       to 0x0 and the TnMR field to 0x3.
-	 *
-	 *   TIMER_TAMR_TAMR_M : Capture Mode
-	 *   TACMR = 0         : Edge-Count Mode
-	 *
-	 *  GPTM Timer A Mode (GPTMTAMR, page 726)
-	 *************************************************************************/
-    WTIMER1_TAMR_R |= (TIMER_TAMR_TAMR_M | TIMER_TAMR_TACDIR);
+    while(!(SYSCTL_PRWTIMER_R & SYSCTL_PRWTIMER_R1)) {}  /* Wait until ready */
 
     /**************************************************************************
-     * 1.4) Configure the type of event(s) that the timer captures by writing
-     *      the TnEVENTfield of the GPTM Control (GPTMCTL) register. Negative
-     *      edge is selected for the application.
-     *
-     * GPTM Control (GPTMCTL, page 734)
+     * 2.2) Disable Wide Timer1A before configuration
      *************************************************************************/
-    WTIMER1_CTL_R |= TIMER_CTL_TAEVENT_NEG;
+    WTIMER1_CTL_R &= ~TIMER_CTL_TAEN;
 
     /**************************************************************************
-     * 1.5) Not intended to use the GPTM Timer A Prescale
-     *
-     *  GPTM Timer A Prescale (GPTMTAPR, page 757)
+     * 2.3) Configure as 32-bit wide timer
+     *      IMPORTANT: For Wide Timers, 0x0 = 32-bit, 0x4 = 64-bit
      *************************************************************************/
-
-	/**************************************************************************
-	 * 1.6) Load the start value into the GPTM Timer n Interval Load
-	 *      Register (GPTMTnILR).
-	 *      Starts from 0.
-	 *
-	 *  GPTM Timer A Interval Load (GPTMTAILR, page 753)
-	 *************************************************************************/
-    WTIMER1_TAILR_R = 0xFFFFFFF0;   //TIMER_TAILR_M;
+    WTIMER1_CFG_R = 0x00000004;  /* 32-bit wide timer */
 
     /**************************************************************************
-     * 1.7) Load the prescaler match value (if any) in the GPTM Timer n
-     *      Prescale Match (GPTMTnPMR) register.
-     *
-     * WTIMER1_TAPMR_R
-     *
-     * GPTM TimerA Prescale Match (GPTMTAPMR, page 759)
+     * 2.4) Configure EDGE-COUNT mode (NOT capture mode!)
+     *      
+     *      CRITICAL: This is different from CAPTURE mode!
+     *      - TAMR bits [1:0] = 11b (0x3) = Capture mode
+     *      - TACMR bit = 0 means Edge-Count mode (counts edges)
+     *      - TACMR bit = 1 means Edge-Time mode (captures time)
+     * 
+     *      For edge counting, we need:
+     *      - Capture mode (TAMR = 0x3)
+     *      - Edge-count (TACMR = 0)
+     *      - Count up (TACDIR = 1)
      *************************************************************************/
+    WTIMER1_TAMR_R = (TIMER_TAMR_TAMR_CAP |      /* Capture mode (0x3) */
+                      TIMER_TAMR_TACDIR);         /* Count up */
+    /* TACMR = 0 by default (Edge-Count mode) */
 
     /**************************************************************************
-     * 1.8) Load the event count into the GPTM Timer n Match (GPTMTnMATCHR)
-     *      register. Note that when executing an up-count, the value of
-     *      GPTMTnPR and GPTMTnILR must be greater than the value of GPTMTnPMR
-     *      and GPTMTnMATCHR.
-     *
-     *  GPTM Timer A Match (GPTMTAMATCHR, page 755)
+     * 2.5) Configure to count on POSITIVE edges
+     *      Change to TIMER_CTL_TAEVENT_NEG if your sensor uses negative edges
      *************************************************************************/
-    WTIMER1_TAMATCHR_R |= TIMER_TAMATCHR_TAMR_S;
+    WTIMER1_CTL_R &= ~TIMER_CTL_TAEVENT_M;       /* Clear event bits */
+    WTIMER1_CTL_R |= TIMER_CTL_TAEVENT_POS;      /* Count on rising edges */
 
     /**************************************************************************
-     * 1.9) If interrupts are required, set the CnMIM bit in the GPTM Interrupt
-     *      Mask (GPTMIMR) register. Generates an interrupt only when were
-     *      counted from 0xFFFF.FFFF down to 0x0000.0000 in order to set all
-     *      needed flags to keep the timer (edge-count) counting.
-     *
-     *  GPTM Interrupt Mask (GPTMIMR, page 742)
+     * 2.6) No prescaler - count every edge
      *************************************************************************/
-    WTIMER1_IMR_R |= TIMER_IMR_CAMIM;
-
-	/**************************************************************************
-	 * 1.10) Set the TnEN bit in the GPTMCTL register to enable the timer and
-	 *      start counting.
-	 *
-	 * GPTM Control (GPTMCTL, page 734)
-	 *************************************************************************/
-    WTIMER1_CTL_R |= TIMER_CTL_TAEN; /* GPTM Timer A Enable */
+    WTIMER1_TAPR_R = 0;
 
     /**************************************************************************
-     * 1.12) Enable Master Interrupt for 16/32-Bit Timer 3A.
-     *        WT1CCP0 = 112 -> bit 00 in EN3
-     *
-     *   Interrupt 96-127 Set Enable (EN3, page 140)
+     * 2.7) Load maximum count value
+     *      Timer will count from 0 to 0xFFFFFFFF and rollover
      *************************************************************************/
-    NVIC_EN3_R = 0x00000001;
+    WTIMER1_TAILR_R = 0xFFFFFFFF;
 
+    /**************************************************************************
+     * 2.8) Clear any pending interrupts (though we won't use them)
+     *************************************************************************/
+    WTIMER1_ICR_R = TIMER_ICR_CAMCINT;
+
+    /**************************************************************************
+     * 2.9) DO NOT enable interrupts for WTimer1
+     *      We only need Timer3 interrupt to read the counter periodically
+     *************************************************************************/
+    WTIMER1_IMR_R = 0;  /* No interrupts from WTimer1 */
+
+    /**************************************************************************
+     * 2.10) Enable Wide Timer1A to start counting
+     *************************************************************************/
+    WTIMER1_CTL_R |= TIMER_CTL_TAEN;
+
+    /**************************************************************************
+     * Configuration complete!
+     * 
+     * How it works:
+     * 1. WTimer1A counts edges on PC6 continuously
+     * 2. Every 100ms, Timer3A generates an interrupt
+     * 3. In Timer3A ISR, read WTIMER1_TAV_R to get pulse count
+     * 4. Calculate RPM from pulse difference
+     *************************************************************************/
 }
+
 
 void pso_pwm_config()
 {
@@ -1193,4 +1127,5 @@ void pso_spi2_config()
      *************************************************************************/
     SSI2_CR1_R |= SSI_CR1_SSE;                               /* SSI0 enabled */
 }
+
 

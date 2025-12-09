@@ -263,14 +263,15 @@ uint32_t get_system_ticks(void)
 /* Função para obter tempo em ms */
 uint32_t get_system_ms(void)
 {
-    return g_system_ms_counter;
+    //return g_system_ms_counter;
+    return get_system_ticks();
 }
 
 /* Função de timing simplificada */
 bool check_interval_ms(uint32_t interval_ms)
 {
     static uint32_t last_time = 0;
-    uint32_t current_time = get_system_ms();
+    uint32_t current_time = get_system_ticks();  //get_system_ms();
     
     if ((current_time - last_time) >= interval_ms)
     {

@@ -220,14 +220,14 @@ class PSOReceiver:
                 if packet:
                     print(packet)
                     
-                    # Estatísticas a cada 100 pacotes
-                    if self.packet_count % 100 == 0:
-                        elapsed = time.time() - self.start_time
-                        rate = self.packet_count / elapsed
-                        error_rate = (self.error_count / 
-                                     (self.packet_count + self.error_count) * 100)
-                        print(f"\n--- Stats: {self.packet_count} pacotes, "
-                              f"{rate:.1f} pkt/s, {error_rate:.1f}% erros ---\n")
+                    # # Estatísticas a cada 100 pacotes
+                    # if self.packet_count % 100 == 0:
+                    #     elapsed = time.time() - self.start_time
+                    #     rate = self.packet_count / elapsed
+                    #     error_rate = (self.error_count / 
+                    #                  (self.packet_count + self.error_count) * 100)
+                    #     print(f"\n--- Stats: {self.packet_count} pacotes, "
+                    #           f"{rate:.1f} pkt/s, {error_rate:.1f}% erros ---\n")
         
         except KeyboardInterrupt:
             print("\n\nParando...")
