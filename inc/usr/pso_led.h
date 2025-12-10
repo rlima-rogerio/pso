@@ -1,59 +1,51 @@
-/******************************************************************************
-* FILENAME:    pso_led.c
-*
-* DESCRIPTION:
-*       Functions to turn on/off the three LEDs.
-*
-* FUNCTIONS:
-*    void PSO_LEDRedOn    (void);
-*    void PSO_LEDRedOff   (void);
-*    void PSO_LEDGreenOn  (void);
-*    void PSO_LEDGreenOff (void);
-*    void PSO_LEDBlueOn   (void);
-*    void PSO_LEDBlueOff  (void);
-*    void PSO_LEDWhiteOn  (void);
-*    void PSO_LEDWhiteOff (void);
-*
-* NOTES:
-*       None.
-*
-* REFERENCES:
-*       None.
-*
-* START DATE:    16 Aug 2015
-*
-* CHANGES :
-*
-* VERSION DATE        WHO                    DETAIL
-* 1.0     16 Aug 2015 Rogerio Lima         Start-up coding.
-*
-* -----------------------------------------------------------------------------
-* 2.0
-******************************************************************************/
+/*******************************************************************************
+ * FILE:        pso_led.h
+ *
+ * DESCRIPTION:
+ *      LED control API using direct register access (no DriverLib).
+ *      Naming convention: led_<color>_<action>()
+ *
+ * LED PIN MAP (TM4C123GH6PM – LaunchPad):
+ *      PF1 – Red
+ *      PF2 – Blue
+ *      PF3 – Green
+ *
+ ******************************************************************************/
 
 #ifndef PSO_LED_H_
 #define PSO_LED_H_
 
+/* Single-color LED control */
+void led_red_on(void);
+void led_red_off(void);
+void led_green_on(void);
+void led_green_off(void);
+void led_blue_on(void);
+void led_blue_off(void);
 
+/* Toggles */
+void led_red_toggle(void);
+void led_blue_toggle(void);
+void led_green_toggle(void);
 
-void PSO_LEDRedOn    (void);
-void PSO_LEDRedOff   (void);
-void PSO_LEDGreenOn  (void);
-void PSO_LEDGreenOff (void);
-void PSO_LEDBlueOn   (void);
-void PSO_LEDBlueOff  (void);
-void led_red_toggle (void);
-void led_blue_toggle (void);
-void led_green_toggle (void);
-void PSO_LEDWhiteOn  (void);
-void PSO_LEDWhiteOff (void);
-void PSO_LEDCyanOn   (void);
-void PSO_LEDCyanOff  (void);
-void PSO_LEDPurpleOn (void);
-void PSO_LEDPurpleOff(void);
-void PSO_LEDYellowOn (void);
-void PSO_LEDYellowOff(void);
-void PSO_LEDAllOff   (void);
+/* Multi-color combinations */
+void led_white_on(void);
+void led_white_off(void);
+void led_white_toggle(void);
 
+void led_cyan_on(void);
+void led_cyan_off(void);
+void led_cyan_toggle(void);
+
+void led_purple_on(void);
+void led_purple_off(void);
+void led_purple_toggle(void);
+
+void led_yellow_on(void);
+void led_yellow_off(void);
+void led_yellow_toggle(void);
+
+/* Global control */
+void led_all_off(void);
 
 #endif /* PSO_LED_H_ */

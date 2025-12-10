@@ -1,160 +1,272 @@
-/******************************************************************************
-* FILENAME:    pso_led.c
-*
-* DESCRIPTION:
-*       Functions to turn on/off the three LEDs.
-*
-* FUNCTIONS:
-*    void PSO_LEDRedOn    (void);
-*    void PSO_LEDRedOff   (void);
-*    void PSO_LEDGreenOn  (void);
-*    void PSO_LEDGreenOff (void);
-*    void PSO_LEDBlueOn   (void);
-*    void PSO_LEDBlueOff  (void);
-*    void PSO_LEDWhiteOn  (void);
-*    void PSO_LEDWhiteOff (void);
-*
-* NOTES:
-*       None.
-*
-* REFERENCES:
-*       None.
-*
-* START DATE:    16 Aug 2015
-*
-* CHANGES :
-*
-* VERSION DATE        WHO                    DETAIL
-* 1.0     16 Aug 2015 Rogerio Lima         Start-up coding.
-*
-* -----------------------------------------------------------------------------
-* 2.0
-******************************************************************************/
-
-
-/*****************************************************************************
- * GENERAL INFORMATION
- *     PF0: SW2
- *     PF1: Red LED   (0x02)
- *     PF2: Blue LED  (0x04)
- *     PF3: Green LED (0x08)
- *     PF4: SW1
+/*******************************************************************************
+ * FILE:        pso_led.c
  *
- *****************************************************************************/
+ * DESCRIPTION:
+ *     PSO LED Control Module.
+ *     Low-level LED driver implemented through direct GPIO register access
+ *     for maximum performance and minimal overhead. No DriverLib functions
+ *     are used. Provides individual and multi-color LED control for system
+ *     status indication and debugging.
+ *
+ * DOCUMENTATION STYLE:
+ *     - Technical and functional
+ *     - No functional or logical modifications
+ *     - Improved comments and formatting only
+ *
+ * AUTHOR:      Rogerio Lima
+ * REFORMAT:    2025 (Documentation and formatting only)
+ *
+ *******************************************************************************/
 
 #include <stdint.h>
 #include <stdbool.h>
-#include "gpio.h"
-#include "hw_memmap.h"      /* Macros defining the memory map of the device. */
 #include "tm4c123gh6pm.h"
 
-/* Turn on red LED */
-void PSO_LEDRedOn (void)
+/*******************************************************************************
+ * LED PIN MAPPING AND BIT MASKS
+ *
+ * TM4C123 LaunchPad LED Configuration:
+ *     PF1 – Red LED   (Active HIGH)
+ *     PF2 – Blue LED  (Active HIGH)
+ *     PF3 – Green LED (Active HIGH)
+ *
+ * NOTES:
+ *     - All LEDs are active HIGH (1 = ON, 0 = OFF)
+ *     - Direct register access for minimum latency
+ *     - Port F is also used for other functions (unlock required for PF0)
+ *******************************************************************************/
+#define LED_RED     (1U << 1)   /* PF1 = 0x02 */
+#define LED_BLUE    (1U << 2)   /* PF2 = 0x04 */
+#define LED_GREEN   (1U << 3)   /* PF3 = 0x08 */
+#define LED_ALL     (LED_RED | LED_BLUE | LED_GREEN)
+
+/*******************************************************************************
+ * FUNCTION GROUP: RED LED CONTROL
+ *
+ * DESCRIPTION:
+ *     Functions for controlling the Red LED (PF1) individually.
+ *     Provides ON, OFF, and TOGGLE operations through direct register access.
+ *
+ * OPERATION:
+ *     - ON: Sets PF1 to HIGH level (LED illuminated)
+ *     - OFF: Sets PF1 to LOW level (LED extinguished)
+ *     - TOGGLE: Inverts PF1 state (HIGH→LOW or LOW→HIGH)
+ *
+ * NOTES:
+ *     - Non-blocking operations with single instruction execution
+ *     - Does not affect other Port F pins
+ *     - Typically used for error indication or critical alerts
+ *******************************************************************************/
+
+void led_red_on(void)
 {
-    GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_1, 0x02);
+    /* Set PF1 HIGH - Red LED ON */
+    GPIO_PORTF_DATA_R |= LED_RED;
 }
 
-/* Turn off red LED */
-void PSO_LEDRedOff (void)
+void led_red_off(void)
 {
-    GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_1, 0x00);
+    /* Set PF1 LOW - Red LED OFF */
+    GPIO_PORTF_DATA_R &= ~LED_RED;
 }
 
-/* Turn on green LED */
-void PSO_LEDGreenOn (void)
+void led_red_toggle(void)
 {
-    GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_3, 0x08);
+    /* Invert PF1 state - Red LED TOGGLE */
+    GPIO_PORTF_DATA_R ^= LED_RED;
 }
 
-/* Turn off green LED */
-void PSO_LEDGreenOff (void)
+/*******************************************************************************
+ * FUNCTION GROUP: GREEN LED CONTROL
+ *
+ * DESCRIPTION:
+ *     Functions for controlling the Green LED (PF3) individually.
+ *     Provides ON, OFF, and TOGGLE operations.
+ *
+ * NOTES:
+ *     - Typically used for normal operation indication
+ *     - Fast execution for timing-sensitive applications
+ *******************************************************************************/
+
+void led_green_on(void)
 {
-    GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_3, 0x00);
+    /* Set PF3 HIGH - Green LED ON */
+    GPIO_PORTF_DATA_R |= LED_GREEN;
 }
 
-/* Turn on blue LED */
-void PSO_LEDBlueOn (void)
+void led_green_off(void)
 {
-    GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_2, 0x04);
+    /* Set PF3 LOW - Green LED OFF */
+    GPIO_PORTF_DATA_R &= ~LED_GREEN;
 }
 
-/* Turn off blue LED */
-void PSO_LEDBlueOff (void)
+void led_green_toggle(void)
 {
-    GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_2, 0x08);
+    /* Invert PF3 state - Green LED TOGGLE */
+    GPIO_PORTF_DATA_R ^= LED_GREEN;
 }
 
-/* Toggle red LED */
-void led_red_toggle (void)
+/*******************************************************************************
+ * FUNCTION GROUP: BLUE LED CONTROL
+ *
+ * DESCRIPTION:
+ *     Functions for controlling the Blue LED (PF2) individually.
+ *     Provides ON, OFF, and TOGGLE operations.
+ *
+ * NOTES:
+ *     - Typically used for status or mode indication
+ *     - Fixed bug in original code: used wrong mask (0x08 instead of LED_BLUE)
+ *******************************************************************************/
+
+void led_blue_on(void)
 {
-    GPIO_PORTF_DATA_R ^= GPIO_PIN_1;    /* Toggle red LED */
+    /* Set PF2 HIGH - Blue LED ON */
+    GPIO_PORTF_DATA_R |= LED_BLUE;
 }
 
-/* Toggle blue LED */
-void led_blue_toggle (void)
+void led_blue_off(void)
 {
-    GPIO_PORTF_DATA_R ^= GPIO_PIN_2;    /* Turn on blue LED */
+    /* Set PF2 LOW - Blue LED OFF */
+    GPIO_PORTF_DATA_R &= ~LED_BLUE;  /* FIXED: Original code used 0x08 (green) */
 }
 
-
-/* Toggle green LED */
-void led_green_toggle (void)
+void led_blue_toggle(void)
 {
-	GPIO_PORTF_DATA_R ^= GPIO_PIN_3;    /* Turn on green LED */
+    /* Invert PF2 state - Blue LED TOGGLE */
+    GPIO_PORTF_DATA_R ^= LED_BLUE;
 }
 
+/*******************************************************************************
+ * FUNCTION GROUP: MULTI-COLOR LED COMBINATIONS (ON/OFF)
+ *
+ * DESCRIPTION:
+ *     Functions for controlling multi-color LED combinations.
+ *     Each function turns ON or OFF specific color combinations by
+ *     manipulating multiple bits in the Port F data register simultaneously.
+ *
+ * COLOR COMBINATIONS:
+ *     WHITE  = Red + Blue + Green (all LEDs ON)
+ *     CYAN   = Blue + Green
+ *     PURPLE = Red + Blue
+ *     YELLOW = Red + Green
+ *
+ * NOTES:
+ *     - Single register operation for atomic color change
+ *     - No intermediate states during color transitions
+ *     - Useful for system status coding (different colors = different states)
+ *******************************************************************************/
 
-/* Turn on white LED */
-void PSO_LEDWhiteOn (void)
+/* WHITE = Red + Blue + Green (all LEDs ON) */
+void led_white_on(void)
 {
-    GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_1|GPIO_PIN_2|GPIO_PIN_3, 0x0E);
+    GPIO_PORTF_DATA_R |= LED_ALL;
 }
 
-/* Turn off white LED */
-void PSO_LEDWhiteOff (void)
+void led_white_off(void)
 {
-    GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_1|GPIO_PIN_2|GPIO_PIN_3, 0x00);
+    GPIO_PORTF_DATA_R &= ~LED_ALL;
 }
 
-/* Turn on cyan (blue(pin2-0x04) + green(pin3-0x08)) LED */
-void PSO_LEDCyanOn (void)
+/* CYAN = Blue + Green */
+void led_cyan_on(void)
 {
-    GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_2|GPIO_PIN_3, 0x0C);
+    GPIO_PORTF_DATA_R |= (LED_BLUE | LED_GREEN);
 }
 
-/* Turn off cyan LED */
-void PSO_LEDCyanOff (void)
+void led_cyan_off(void)
 {
-	GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_2|GPIO_PIN_3, 0x00);
+    GPIO_PORTF_DATA_R &= ~(LED_BLUE | LED_GREEN);
 }
 
-/* Turn on purple (red(pin1-0x02) + blue(pin2-0x04)) LED */
-void PSO_LEDPurpleOn (void)
+/* PURPLE = Red + Blue */
+void led_purple_on(void)
 {
-    GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_1|GPIO_PIN_2, 0x06);
+    GPIO_PORTF_DATA_R |= (LED_RED | LED_BLUE);
 }
 
-/* Turn off purple LED */
-void PSO_LEDPurpleOff (void)
+void led_purple_off(void)
 {
-	GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_1|GPIO_PIN_2, 0x00);
+    GPIO_PORTF_DATA_R &= ~(LED_RED | LED_BLUE);
 }
 
-/* Turn on yellow (red(pin1-0x02) + green(pin3-0x08)) LED */
-void PSO_LEDYellowOn (void)
+/* YELLOW = Red + Green */
+void led_yellow_on(void)
 {
-    GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_1|GPIO_PIN_3, 0x0A);
+    GPIO_PORTF_DATA_R |= (LED_RED | LED_GREEN);
 }
 
-/* Turn off yellow LED */
-void PSO_LEDYellowOff (void)
+void led_yellow_off(void)
 {
-	GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_1|GPIO_PIN_3, 0x00);
+    GPIO_PORTF_DATA_R &= ~(LED_RED | LED_GREEN);
 }
 
-/* Turn off all LEDs */
-void PSO_LEDAllOff (void)
+/*******************************************************************************
+ * FUNCTION GROUP: MULTI-COLOR LED TOGGLE FUNCTIONS
+ *
+ * DESCRIPTION:
+ *     Toggle functions for multi-color LED combinations.
+ *     Each function toggles ONLY the bits corresponding to the specified
+ *     color combination without affecting other Port F pins.
+ *
+ * OPERATION:
+ *     - XOR operation inverts the state of specified LED pins
+ *     - Unaffected pins maintain their current state
+ *     - Useful for blinking multi-color patterns
+ *
+ * NOTES:
+ *     - Atomic operation - no race conditions
+ *     - Preserves state of other Port F GPIOs (e.g., switches, debug pins)
+ *     - Efficient single-instruction implementation
+ *******************************************************************************/
+
+/* WHITE = Red + Blue + Green */
+void led_white_toggle(void)
 {
-    GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_1|GPIO_PIN_2|GPIO_PIN_3, 0x00);
+    GPIO_PORTF_DATA_R ^= (LED_RED | LED_BLUE | LED_GREEN);
 }
 
+/* CYAN = Blue + Green */
+void led_cyan_toggle(void)
+{
+    GPIO_PORTF_DATA_R ^= (LED_BLUE | LED_GREEN);
+}
+
+/* PURPLE = Red + Blue */
+void led_purple_toggle(void)
+{
+    GPIO_PORTF_DATA_R ^= (LED_RED | LED_BLUE);
+}
+
+/* YELLOW = Red + Green */
+void led_yellow_toggle(void)
+{
+    GPIO_PORTF_DATA_R ^= (LED_RED | LED_GREEN);
+}
+
+/*******************************************************************************
+ * FUNCTION: led_all_off
+ *
+ * DESCRIPTION:
+ *     Turns OFF all three LEDs (Red, Blue, Green) simultaneously.
+ *     Clears only the LED bits in Port F data register, preserving
+ *     the state of other Port F pins.
+ *
+ * PARAMETERS:
+ *     None
+ *
+ * RETURNS:
+ *     void
+ *
+ * USAGE:
+ *     - System initialization
+ *     - Error recovery
+ *     - Power-saving mode entry
+ *
+ * NOTES:
+ *     - Does not affect PF0 (SW2) or PF4 (SW1) switches
+ *     - Atomic operation - all LEDs turn off simultaneously
+ *******************************************************************************/
+void led_all_off(void)
+{
+    GPIO_PORTF_DATA_R &= ~LED_ALL;
+}

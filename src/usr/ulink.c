@@ -12,6 +12,7 @@ ulink_pso_data_t dp;
 
 extern volatile uint32_t adc0_buffer[3];      /* Ax - Thr - V_m */
 extern volatile uint32_t adc1_buffer[3];      /* Ay -  Az - I_m */
+
 extern uint8_t g_pwm_value;
 extern uint32_t g_scaled_rpm;
 

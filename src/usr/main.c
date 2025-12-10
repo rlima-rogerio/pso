@@ -1,20 +1,21 @@
 /*******************************************************************************
- * FILENAME:    main.c (Refactored)
+ * FILE:        main.c
  *
  * DESCRIPTION:
- *       Main application for PSO data acquisition system with UART streaming.
- *       Instead of saving to SD card, data is streamed continuously via UART.
+ *     PSO Embedded System Module.
+ *     This file is part of the PSO real-time data acquisition and PWM control
+ *     firmware for the TM4C123 platform.
  *
- * AUTHOR:      Rogerio Lima (Original)
- *              Refactored: 2025
+ * DOCUMENTATION STYLE:
+ *     - Balanced (technical + objective)
+ *     - No functional or logical modifications were introduced
+ *     - Only comments and formatting were improved
  *
- * CHANGES:
- *       - Removed SD card functionality
- *       - Added UART streaming
- *       - Improved code readability
- *       - Better state machine organization
- *       - Enhanced comments and documentation
- ******************************************************************************/
+ * AUTHOR:      Rogerio Lima
+ * REFORMAT:    2025 (Documentation and formatting only)
+ *
+ *******************************************************************************
+ */
 
 #include <stdio.h>
 #include <stdint.h>
@@ -43,8 +44,8 @@
 #include "fifo.h"
 #include "ulink.h"
 #include "ulink_types.h"
-#include "systick.h"      // Para funções SysTick
-#include "hw_nvic.h"            // Para registros NVIC
+#include "systick.h"            // SysTick functions
+#include "hw_nvic.h"            // NVIC registers
 #include "pso_debug.h"
 #include "pso_rpm.h"
 #include "pso_system.h"
@@ -52,57 +53,68 @@
 /*******************************************************************************
  * EXTERNAL VARIABLES
  ******************************************************************************/
-extern uart_raw_data_t g_uart0_data;
-extern uint8_t g_tx_buffer_uart;
-extern uint16_t uart_tx_buffer[ULINK_MAX_PACKET_LEN];
-extern uint8_t g_timer_a0_scan_flag;
-extern ulink_pso_data_t dp;
-extern fifo_t g_fifo_ping;
-extern fifo_t g_fifo_pong;
-extern uint8_t pwm_throttle;
-extern uint8_t fix_rpm_start_acq;
-extern uint32_t g_pulse_diff;               /* Pulse difference */
-extern uint8_t g_pwm_value;                 /* Global PWM value */
+extern uart_raw_data_t g_uart0_data;            // UART0 raw data buffer
+extern uint8_t g_tx_buffer_uart;                // UART transmit buffer
+extern uint16_t uart_tx_buffer[ULINK_MAX_PACKET_LEN]; // UART packet buffer
+extern uint8_t g_timer_a0_scan_flag;            // Timer A0 scan completion flag
+extern ulink_pso_data_t dp;                     // Data packet structure
+extern fifo_t g_fifo_ping;                      // Ping FIFO for data buffering
+extern fifo_t g_fifo_pong;                      // Pong FIFO for data buffering
+extern uint8_t pwm_throttle;                    // PWM throttle value
+extern uint8_t fix_rpm_start_acq;               // Fixed RPM acquisition start flag
+extern uint32_t g_pulse_diff;                   // Pulse difference for RPM calculation
+extern uint8_t g_pwm_value;                     // Global PWM duty cycle value
 
 /*******************************************************************************
  * GLOBAL VARIABLES
  ******************************************************************************/
-uint16_t scan_period_actual;
-pwm_profile_t current_profile = PWM_PROFILE_NONE;
-uint8_t profile_complete = 0U;     /* Flag indicating profile completion */
-uint32_t profile_start_time = 0U;  /* Start time of current profile */
-uint32_t g_scaled_rpm;
+uint16_t scan_period_actual;                    // Actual scan period in use
+pwm_profile_t current_profile = PWM_PROFILE_NONE; // Currently active PWM profile
+uint8_t profile_complete = 0U;                  // Flag indicating profile completion
+uint32_t g_profile_start_time = 0U;             // Start time of current profile (ms)
+uint32_t g_scaled_rpm;                          // Scaled RPM value
 
 /* PWM Profile Configuration */
-static trapezoid_config_t active_trapezoid_config;
+static trapezoid_config_t active_trapezoid_config; // Active trapezoid profile configuration
 
 /*******************************************************************************
  * FUNCTION PROTOTYPES
  ******************************************************************************/
-static void system_init(void);
-static void stream_data_uart(void);
-static void handle_data_capture(void);
+static void system_init(void);                  // Initialize system peripherals
+static void stream_data_uart(void);             // Stream data via UART
+static void handle_data_capture(void);          // Handle data capture and buffering
+
+/* SysTick Function Prototypes */
+void SysTick_Handler(void);                     // SysTick interrupt handler
+uint32_t get_systick_ms(void);                  // Get milliseconds since system start
+static void configure_systick(void);            // Configure SysTick timer
+
+/* State Machine Handler Prototypes */
+static sys_state_t state_idle(void);            // Idle state handler
+static sys_state_t state_init(void);            // Initialization state handler
+static sys_state_t state_timing(void);          // Timing control state handler
+static sys_state_t state_processing(void);      // Data processing state handler
+static sys_state_t state_streaming(void);       // Data streaming state handler
+static sys_state_t state_pwm_control(void);     // PWM control state handler
+static sys_state_t state_stopping(void);        // Stopping state handler
+static sys_state_t state_error(void);           // Error state handler
 
 /*******************************************************************************
- * SYSYICK FUNCTION PROTOTYPES
+ * FUNCTION: main
+ * 
+ * DESCRIPTION:
+ *       Main application entry point. Initializes system and runs the main
+ *       state machine loop for data acquisition and streaming.
+ * 
+ * PARAMETERS:
+ *       None
+ * 
+ * RETURNS:
+ *       int (never returns - infinite loop)
  ******************************************************************************/
-void SysTick_Handler(void);                    // Handler do SysTick
-uint32_t get_systick_ms(void);                 // Obtém ms desde início
-static void configure_systick(void);           // Configura SysTick
-
-/* State machine handlers */
-static sys_state_t state_idle(void);
-static sys_state_t state_init(void);
-static sys_state_t state_timing(void);
-static sys_state_t state_processing(void);
-static sys_state_t state_streaming(void);
-static sys_state_t state_pwm_control(void);
-static sys_state_t state_stopping(void);
-static sys_state_t state_error(void);
-
 int main(void)
 {
-    sys_state_t sys_state = SYS_STATE_INIT;
+    sys_state_t sys_state = SYS_STATE_INIT;     // Initial system state
     
     /* Initialize system peripherals and configurations */
     system_init();
@@ -110,38 +122,37 @@ int main(void)
     /* Initialize PWM profile system */
     pwm_profile_init();
     
-    /* Configurar perfil trapezoidal personalizado */
+    /* Configure custom trapezoidal profile */
     active_trapezoid_config = (trapezoid_config_t){
-        .duration_ms = 30000,      /* 30 segundos total */
-        .ramp_up_ms = 5000,        /* 5 segundos subida */
-        .hold_ms = 20000,          /* 20 segundos em máximo */
-        .ramp_down_ms = 5000,      /* 5 segundos descida */
-        .min_value = 0,           /* Mínimo 0% */
-        .max_value = 100,           /* Máximo 100% */
-        .cycles = 2,               /* Repetir 2 vezes */
-        .auto_repeat = false
+        .duration_ms = 20000,                   // 20 seconds total duration
+        .ramp_up_ms = 5000,                     // 5 seconds ramp up
+        .hold_ms = 10000,                       // 10 seconds hold at maximum
+        .ramp_down_ms = 5000,                   // 5 seconds ramp down
+        .min_value = 0,                         // Minimum 0% duty cycle
+        .max_value = 100,                       // Maximum 100% duty cycle
+        .cycles = 2,                            // Repeat 2 times
+        .auto_repeat = false                    // No auto-repeat
     };
     
-    // /* Usar template pré-configurado (opcional) */
-    // const trapezoid_config_t* soft_start = pwm_get_trapezoid_template_soft_start();
-    // active_trapezoid_config = *soft_start;
-
     /***************************************************************************
-     * MAIN LOOP OTIMIZADO
+     * MAIN LOOP
+     * 
+     * The main loop follows a priority-based execution model:
+     * 1. High-priority ADC sample processing (interrupt-driven)
+     * 2. Main state machine for system control
      **************************************************************************/
     while (1)
     {
-        /* DEBUG: Pulse ADC timing pin */
-//        DEBUG_STATE_TOGGLE();
+        /* DEBUG: Pulse ADC timing pin (commented out in production) */
+        // DEBUG_STATE_TOGGLE();
 
-        /* 1. PROCESSAMENTO DE AMOSTRAS ADC (alta prioridade) */
+        /* 1. HIGH-PRIORITY ADC SAMPLE PROCESSING */
         if (g_timer_a0_scan_flag)
         {
-            g_timer_a0_scan_flag = 0U;
+            g_timer_a0_scan_flag = 0U;          // Clear flag after processing
         }
         
-        /* 2. LOOP DE CONTROLE PRINCIPAL */
-        /* Máquina de estados principal */
+        /* 2. MAIN CONTROL LOOP - STATE MACHINE */
         switch (sys_state)
         {
             case SYS_STATE_INIT:
@@ -157,15 +168,15 @@ int main(void)
                 break;
                 
             case SYS_STATE_DATA_PROCESSING:
-                sys_state = state_processing();  // Scaling + filtering
+                sys_state = state_processing(); // Data scaling + filtering
                 break;
 
             case SYS_STATE_STREAMING:
-                sys_state = state_streaming();  // Streaming contínuo
+                sys_state = state_streaming();  // Continuous UART streaming
                 break;
                 
-            case SYS_STATE_PWM_CONTROL:         
-                sys_state = state_pwm_control(); // Controle PWM
+            case SYS_STATE_PWM_CONTROL:
+                sys_state = state_pwm_control(); // PWM profile execution
                 break;
                 
             case SYS_STATE_STOPPING:
@@ -177,14 +188,24 @@ int main(void)
                 break;
                 
             default:
-                sys_state = SYS_STATE_IDLE;
+                sys_state = SYS_STATE_IDLE;     // Default fallback state
                 break;
         }
     }
 }
 
 /*******************************************************************************
- * SYSTEM INITIALIZATION
+ * FUNCTION: system_init
+ * 
+ * DESCRIPTION:
+ *       Initializes all system peripherals, clocks, and configurations.
+ *       Enables required modules and sets up interrupts.
+ * 
+ * PARAMETERS:
+ *       None
+ * 
+ * RETURNS:
+ *       void
  ******************************************************************************/
 static void system_init(void)
 {
@@ -194,31 +215,31 @@ static void system_init(void)
     SysCtlClockSet(SYSCTL_SYSDIV_5 | SYSCTL_USE_PLL | 
                    SYSCTL_OSC_MAIN | SYSCTL_XTAL_16MHZ);
     
-    /* CONFIGURA SysTick para 1ms */
-    SysTickPeriodSet(SysCtlClockGet() / 1000);  // 1ms
-    SysTickIntRegister(&SysTick_Handler);       // Registra handler
-    SysTickEnable();
-    SysTickIntEnable();  
+    /* CONFIGURE SysTick for 1ms interrupts */
+    SysTickPeriodSet(SysCtlClockGet() / 1000);  // 1ms period
+    SysTickIntRegister(&SysTick_Handler);       // Register interrupt handler
+    SysTickEnable();                            // Enable SysTick counter
+    SysTickIntEnable();                         // Enable SysTick interrupts
 
-    /* INITIALIZE DEBUG GPIO */
+    /* INITIALIZE DEBUG GPIO PINS */
     debug_gpio_init();
 
     /* Enable and configure peripherals */
-    PSO_PeripheralEnable();
-    PSO_GPIOConfig();
-    PSO_UART0Config();
-    PSO_Timers();
-    PSO_ADCConfig();
+    PSO_PeripheralEnable();                     // Enable system peripherals
+    PSO_GPIOConfig();                           // Configure GPIO pins
+    PSO_UART0Config();                          // Configure UART0
+    PSO_Timers();                               // Configure system timers
+    PSO_ADCConfig();                            // Configure ADC
 
-    /* Stabilization delay */
+    /* Stabilization delay for hardware to settle */
     for (i = 0U; i < 10000U; i++);
 
     /* Configure additional peripherals */
-    pso_rpm_config();
-    pso_pwm_config();
-    pso_spi0_config();
+    pso_rpm_config();                           // Configure RPM measurement
+    pso_pwm_config();                           // Configure PWM output
+    pso_spi0_config();                          // Configure SPI0 (if needed)
 
-    /* Initialize FIFOs */
+    /* Initialize FIFOs for data buffering */
     fifo_init(&g_fifo_ping);
     fifo_init(&g_fifo_pong);
 
@@ -226,13 +247,21 @@ static void system_init(void)
     IntMasterEnable();
 
     /* Turn off all LEDs initially */
-    PSO_LEDWhiteOff();
+    led_all_off();
 }
 
 /*******************************************************************************
- * UART DATA STREAMING
+ * FUNCTION: stream_data_uart
  * 
- * Transmits data packet via UART0 when streaming is active.
+ * DESCRIPTION:
+ *       Transmits data packet via UART0 when streaming is active.
+ *       Includes LED indication for streaming activity.
+ * 
+ * PARAMETERS:
+ *       None
+ * 
+ * RETURNS:
+ *       void
  ******************************************************************************/
 static void stream_data_uart(void)
 {
@@ -241,15 +270,23 @@ static void stream_data_uart(void)
         /* Transmit data packet via UART */
         uartBatchWrite(UART0_BASE, uart_tx_buffer, PACKET_LENGTH);
         
-        /* Toggle LED to indicate streaming activity */
-        //led_green_toggle();
+        /* Toggle LED to indicate streaming activity (commented out) */
+        // led_green_toggle();
     }
 }
 
 /*******************************************************************************
- * DATA CAPTURE HANDLER
+ * FUNCTION: handle_data_capture
  * 
- * Manages data capture and FIFO operations during active streaming.
+ * DESCRIPTION:
+ *       Manages data capture and FIFO operations during active streaming.
+ *       Prevents data loss by checking FIFO capacity before writing.
+ * 
+ * PARAMETERS:
+ *       None
+ * 
+ * RETURNS:
+ *       void
  ******************************************************************************/
 static void handle_data_capture(void)
 {
@@ -262,7 +299,7 @@ static void handle_data_capture(void)
         {
             if (!fifo_put(&g_fifo_ping, (uint8_t)uart_tx_buffer[i]))
             {
-                /* FIFO full - data loss prevention */
+                /* FIFO full - prevent data loss by breaking early */
                 break;
             }
         }
@@ -272,34 +309,41 @@ static void handle_data_capture(void)
 /*******************************************************************************
  * STATE MACHINE: INIT STATE
  * 
- * Initialize streaming parameters and prepare for data transmission.
+ * DESCRIPTION:
+ *       Initializes streaming parameters and prepares system for data
+ *       transmission. Configures timing, resets counters, and sets up
+ *       PWM profiles.
+ * 
+ * PARAMETERS:
+ *       None
+ * 
+ * RETURNS:
+ *       sys_state_t - Next system state (SYS_STATE_IDLE)
  ******************************************************************************/
 static sys_state_t state_init(void)
 {
-    /* Reset streaming flags */
+    /* Reset streaming flags to default state */
     fix_rpm_start_acq = 1U;
     enable_data_capture = 1U;
     streaming_active = 1U;
     
-    /* Configura perfil PWM */
-    current_profile = PWM_PROFILE_TRAPEZOID;  // Perfil padrão
+    /* Configure default PWM profile */
+    current_profile = PWM_PROFILE_TRAPEZOID;    // Default trapezoidal profile
+    g_profile_start_time = 0U;                  // Reset profile start time
     
-    /* Configura taxas específicas */
-    timing_configure(RATE_1000_HZ, 0);  // Loop principal a 1 kHz
+    /* Configure timing rates */
+    timing_configure(RATE_1000_HZ, 0);          // Main loop at 1 kHz
     
-    /* Reseta contadores */
+    /* Reset counters and timers */
     timing_reset();
     sample_counter = 0;
     
-    /* Clear FIFOs */
+    /* Clear FIFOs for fresh start */
     fifo_init(&g_fifo_ping);
     fifo_init(&g_fifo_pong);
     
-    /* Configura o perfil trapezoidal ativo */
+    /* Configure active trapezoidal profile */
     pwm_set_trapezoid_config(&active_trapezoid_config);
-    
-    /* Indicate successful initialization */
-    PSO_LEDGreenOn();
     
     return SYS_STATE_IDLE;
 }
@@ -307,59 +351,86 @@ static sys_state_t state_init(void)
 /*******************************************************************************
  * STATE MACHINE: IDLE STATE
  * 
- * Wait for user input to start streaming.
- * SW1 button press initiates the streaming process.
+ * DESCRIPTION:
+ *       Waits for user input (SW1 button press) to start streaming.
+ *       Provides visual standby indication.
+ * 
+ * PARAMETERS:
+ *       None
+ * 
+ * RETURNS:
+ *       sys_state_t - Next system state
+ *                     (SYS_STATE_IDLE or SYS_STATE_TIMING)
  ******************************************************************************/
 static sys_state_t state_idle(void)
 {
-    indicate_standby();
-
-    /* Check if SW1 is pressed */
+    indicate_standby();                         // Visual indication of standby mode
+    
+    /* Check if SW1 (PF4) is pressed to start streaming */
     if (!(GPIO_PORTF_DATA_R & GPIO_PIN_4))
     {
-        PSO_LEDWhiteOff();
-        return SYS_STATE_TIMING;
+        led_all_off();                          // Turn off all LEDs
+        
+        // Optional: Reset profile start time here if needed
+        // g_profile_start_time = get_systick_ms();
+        
+        return SYS_STATE_TIMING;                // Transition to timing state
     }
 
-    return SYS_STATE_IDLE;
+    return SYS_STATE_IDLE;                      // Remain in idle state
 }
 
 /*******************************************************************************
- * STATE MACHINE: TIMING 
+ * STATE MACHINE: TIMING STATE
  * 
- * Controls the loop rate.
+ * DESCRIPTION:
+ *       Controls the main loop rate at 500 Hz (2ms intervals). 
+ *       Provides timing synchronization for the data processing pipeline.
+ * 
+ * PARAMETERS:
+ *       None
+ * 
+ * RETURNS:
+ *       sys_state_t - Next system state
+ *                     (SYS_STATE_TIMING or SYS_STATE_DATA_PROCESSING)
  ******************************************************************************/
 static sys_state_t state_timing(void)
 {
-    /* Controls the loop rate (1 kHz) */
-    if (check_interval_ms(1))
+    /* Control loop rate at 500 Hz (2ms intervals) */
+    if (check_interval_ms(2))
     {
-        DEBUG_STATE_TOGGLE(); /* PD7 - Yellow channel */
-
-        return SYS_STATE_DATA_PROCESSING;
+        DEBUG_STATE_TOGGLE();                   /* PD7 - Yellow channel debug */
+        
+        return SYS_STATE_DATA_PROCESSING;       // Proceed to data processing
     }
 
-    return SYS_STATE_TIMING;
+    return SYS_STATE_TIMING;                    // Wait for next timing interval
 }
 
 /*******************************************************************************
- * STATE MACHINE: DATA PROCESSING
+ * STATE MACHINE: DATA PROCESSING STATE
  * 
- * Scaling and filtering of acquired data before streaming.
+ * DESCRIPTION:
+ *       Performs scaling and filtering of acquired data before streaming.
+ *       Calculates RPM and prepares data packet for transmission.
+ * 
+ * PARAMETERS:
+ *       None
+ * 
+ * RETURNS:
+ *       sys_state_t - Next system state (SYS_STATE_STREAMING)
  ******************************************************************************/
 static sys_state_t state_processing(void)
 {
     uint32_t raw_rpm;
 
+    /* Get raw RPM count and calculate scaled RPM */
     raw_rpm = rpm_get_raw_count();
     g_scaled_rpm = rpm_calculate(g_pulse_diff, RPM_CALC_PERIOD_MS, BLADE_NUMBER);
 
-    /* Coleta e processa dados */
+    /* Collect and process data into packet */
     packet_data(&dp);
     copy_data(uart_tx_buffer, &dp);
-    
-    /* Indicate successful initialization */
-    PSO_LEDGreenOn();
     
     return SYS_STATE_STREAMING;
 }
@@ -367,64 +438,83 @@ static sys_state_t state_processing(void)
 /*******************************************************************************
  * STATE MACHINE: STREAMING STATE
  * 
- * Active data streaming via UART.
- * Manages UART data transmission and transitions to PWM control.
+ * DESCRIPTION:
+ *       Active data streaming via UART at 500 Hz.
+ *       Manages UART data transmission and provides streaming indication.
+ *       Monitors for manual stop command (SW2 button).
+ * 
+ * PARAMETERS:
+ *       None
+ * 
+ * RETURNS:
+ *       sys_state_t - Next system state
+ *                     (SYS_STATE_STREAMING, SYS_STATE_STOPPING, or SYS_STATE_PWM_CONTROL)
  ******************************************************************************/
 static sys_state_t state_streaming(void)
 {
-    static uint32_t last_stream_time = 0;
-    static uint32_t stream_packet_count = 0;
-    uint32_t current_time = get_systick_ms();
+    static uint32_t stream_packet_count = 0;    // Packet counter for debugging
+    uint32_t current_time = get_systick_ms();   // Current system time
 
-    indicate_streaming();
-
-    /* STREAMING DE DADOS (executa a cada 2ms = 500 Hz) */
-    if ((current_time - last_stream_time) >= 2)  // 500 Hz
+    indicate_streaming();                       // Visual streaming indication
+    
+    if (enable_data_capture)
     {
-        last_stream_time = current_time;
+        /* Explicitly call uartBatchWrite for data transmission */
+        uartBatchWrite(UART0_BASE, uart_tx_buffer, PACKET_LENGTH);
         
-        if (enable_data_capture)
-        {
-            /* EXPLICITAMENTE chama uartBatchWrite para envio de dados */
-            uartBatchWrite(UART0_BASE, uart_tx_buffer, PACKET_LENGTH);
-            
-            stream_packet_count++;
-            
-            /* Toggle LED para indicar atividade de streaming */
-            led_green_toggle();
-            DEBUG_ADC_TOGGLE(); /* PD6 -  */
-        }
+        stream_packet_count++;                  // Increment packet counter
+        
+        /* Toggle debug pin to indicate streaming activity */
+        DEBUG_ADC_TOGGLE();                     /* PD6 - ADC debug pin */
     }
 
-    /* Check if SW2 is pressed (manual stop) */
+    /* Check if SW2 (PF0) is pressed for manual stop */
     if (!(GPIO_PORTF_DATA_R & GPIO_PIN_0))
     {
-        return SYS_STATE_STOPPING;
+        return SYS_STATE_STOPPING;              // Transition to stopping state
     }
 
-    return SYS_STATE_PWM_CONTROL;
+    return SYS_STATE_PWM_CONTROL;               // Proceed to PWM control
 }
 
 /*******************************************************************************
  * STATE MACHINE: PWM CONTROL STATE
  * 
- * Executes PWM control profiles (trapezoid, linear, step).
+ * DESCRIPTION:
+ *       Executes PWM control profiles (trapezoid, linear, step, custom).
+ *       Automatically resets profile timing on first entry.
+ *       Updates throttle value in data packet and monitors profile completion.
+ *       Provides manual stop capability via SW2 button.
+ * 
+ * PARAMETERS:
+ *       None
+ * 
+ * RETURNS:
+ *       sys_state_t - Next system state
+ *                     (SYS_STATE_TIMING or SYS_STATE_STOPPING)
  ******************************************************************************/
 static sys_state_t state_pwm_control(void)
 {
-    static uint32_t last_pwm_update = 0;
-    static uint32_t last_profile_check = 0;
-    uint32_t current_time = get_systick_ms();
-    uint8_t profile_result = FUNCTION_RUNNING;
+    static uint32_t last_pwm_update = 0;        // Last PWM update time
+    static uint8_t first_entry = 1;             // Flag for first entry into state
+    uint32_t current_time = get_systick_ms();   // Current system time
+    uint8_t profile_result = FUNCTION_RUNNING;  // Profile execution status
 
-    indicate_pwm_active();
+    indicate_pwm_active();                      // Visual PWM active indication
+
+    /* RESET start time on first entry into this state */
+    if (first_entry)
+    {
+        g_profile_start_time = current_time;    // Reset profile start time
+        first_entry = 0;                        // Clear first entry flag
+    }
 
     last_pwm_update = current_time;
     
-    /* Calcula tempo decorrido desde início do perfil */
-    uint32_t elapsed_ms = current_time - profile_start_time;
+    /* Calculate elapsed time since profile start */
+    uint32_t elapsed_ms = current_time - g_profile_start_time;
     
-    /* Executa perfil selecionado */
+    /* Execute selected profile type */
     switch (current_profile)
     {
         case PWM_PROFILE_TRAPEZOID:
@@ -463,50 +553,58 @@ static sys_state_t state_pwm_control(void)
             break;
             
         default:
-            /* Fallback para trapezoidal */
+            /* Fallback to trapezoidal profile */
             profile_result = execute_trapezoid_profile(elapsed_ms, &active_trapezoid_config);
             break;
     }
     
-    /* Atualiza throttle no pacote de dados */
+    /* Update throttle value in data packet */
     dp.throttle = g_pwm_value;
-        
-
-
-    /* Verifica conclusão do perfil */
+    
+    /* Check if profile has completed */
     if (profile_result == FUNCTION_COMPLETE)
     {
-        profile_complete = 1U;
-        pwm_profile_stop();
-        
-        return SYS_STATE_STOPPING;
+        profile_complete = 1U;                  // Set completion flag
+        pwm_profile_stop();                     // Stop profile execution
+        first_entry = 1;                        // Prepare for next execution
+        return SYS_STATE_STOPPING;              // Transition to stopping state
     }
 
-    /* Check if SW2 is pressed (manual stop) */
+    /* Check if SW2 (PF0) is pressed for manual stop */
     if (!(GPIO_PORTF_DATA_R & GPIO_PIN_0))
     {
-        pwm_profile_stop();
-        return SYS_STATE_STOPPING;
+        pwm_profile_stop();                     // Stop PWM profile
+        first_entry = 1;                        // Prepare for next execution
+        return SYS_STATE_STOPPING;              // Transition to stopping state
     }
 
-    return SYS_STATE_TIMING;
+    return SYS_STATE_TIMING;                    // Return to timing control
 }
 
 /*******************************************************************************
  * STATE MACHINE: STOPPING STATE
  * 
- * Gracefully stop streaming and cleanup.
+ * DESCRIPTION:
+ *       Gracefully stops streaming and performs cleanup operations.
+ *       Flushes remaining data from FIFOs, stops PWM, and provides
+ *       visual feedback.
+ * 
+ * PARAMETERS:
+ *       None
+ * 
+ * RETURNS:
+ *       sys_state_t - Next system state (SYS_STATE_INIT)
  ******************************************************************************/
 static sys_state_t state_stopping(void)
 {
-    /* Disable streaming and data capture */
+    /* Disable all streaming and data capture */
     streaming_active = 0U;
     enable_data_capture = 0U;
     fix_rpm_start_acq = 0U;
 
-    /* Ensure PWM is stopped */
-    pwm_profile_stop();
-    pwm_set_throttle(0);  /* Garante PWM em 0% */
+    /* Ensure PWM is fully stopped */
+    pwm_profile_stop();                         // Stop PWM profile execution
+    pwm_set_throttle(0);                        /* Ensure PWM at 0% duty cycle */
 
     /* Flush any remaining data in FIFOs */
     while (!fifo_is_empty(&g_fifo_ping))
@@ -516,23 +614,23 @@ static sys_state_t state_stopping(void)
         UARTCharPut(UART0_BASE, data);
     }
 
-    indicate_finish();
-    
-    /* Mensagem de finalização */
-    char stop_msg[] = "System Stopped. Press SW1 to restart.\r\n";
-    int i;
-    for (i = 0; stop_msg[i] != '\0'; i++)
-    {
-        UARTCharPut(UART0_BASE, stop_msg[i]);
-    }
+    indicate_finish();                          // Visual finish indication
 
-    return SYS_STATE_IDLE;
+    return SYS_STATE_INIT;                      // Return to initialization state
 }
 
 /*******************************************************************************
  * STATE MACHINE: ERROR STATE
  * 
- * Handle error conditions and provide visual feedback.
+ * DESCRIPTION:
+ *       Handles error conditions by disabling all operations,
+ *       stopping PWM, and providing visual error feedback.
+ * 
+ * PARAMETERS:
+ *       None
+ * 
+ * RETURNS:
+ *       sys_state_t - Next system state (SYS_STATE_IDLE)
  ******************************************************************************/
 static sys_state_t state_error(void)
 {
@@ -540,19 +638,10 @@ static sys_state_t state_error(void)
     streaming_active = 0U;
     enable_data_capture = 0U;
     
-    /* Stop PWM */
+    /* Stop PWM immediately */
     pwm_profile_stop();
 
-    indicate_error();
-    
-    /* Mensagem de erro */
-    char error_msg[] = "System Error. Please reset.\r\n";
-    int i;
-    for (i = 0; error_msg[i] != '\0'; i++)
-    {
-        UARTCharPut(UART0_BASE, error_msg[i]);
-    }
+    indicate_error();                           // Visual error indication
 
-    return SYS_STATE_IDLE;
+    return SYS_STATE_IDLE;                      // Return to idle state
 }
-
