@@ -50,6 +50,22 @@
 #include "pso_rpm.h"
 #include "pso_system.h"
 
+
+/*******************************************************************************
+ * COMPILING OPTIONS
+ ******************************************************************************/
+// #define PWM_PROFILE_NONE_SELECTED            /* NOT TESTED */
+
+// #define PWM_PROFILE_TRAPEZOID_SELECTED       /* IMPLEMENTED */
+#define PWM_PROFILE_LINEAR_SELECTED          /* IMPLEMENTED */
+// #define PWM_PROFILE_STEP_SELECTED            /* IMPLEMENTED */
+
+// #define PWM_PROFILE_CUSTOM_SELECTED          /* NOT IMPLEMENTED */
+// #define PWM_PROFILE_SINE_SELECTED            /* NOT IMPLEMENTED */
+// #define PWM_PROFILE_EXPONENTIAL_SELECTED     /* NOT IMPLEMENTED */
+
+
+
 /*******************************************************************************
  * EXTERNAL VARIABLES
  ******************************************************************************/
@@ -75,7 +91,9 @@ uint32_t g_profile_start_time = 0U;             // Start time of current profile
 uint32_t g_scaled_rpm;                          // Scaled RPM value
 
 /* PWM Profile Configuration */
-static trapezoid_config_t active_trapezoid_config; // Active trapezoid profile configuration
+static linear_config_t linear_config;        // Active linear profile configuration
+static step_config_t step_config;            // Active step profile configuration
+static trapezoid_config_t trapezoid_config;  // Active trapezoid profile configuration
 
 /*******************************************************************************
  * FUNCTION PROTOTYPES
@@ -121,9 +139,29 @@ int main(void)
 
     /* Initialize PWM profile system */
     pwm_profile_init();
-    
+
+#ifdef PWM_PROFILE_LINEAR_SELECTED
+    /* Configure custom linear profile */
+    linear_config = (linear_config_t){
+        .duration_ms = 10000,      /* Total profile duration in ms */
+        .start_value = 0,      /* Start PWM value (0-100%) */
+        .end_value = 100,        /* End PWM value (0-100%) */
+        .cycles = 1,           /* Number of cycles to repeat */
+        .bidirectional = 0,    /* Ramp up then down if true */
+        .slew_rate = 0.01        /* Rate of change (%/ms) - if non-zero overrides duration */
+    };
+#elif defined(PWM_PROFILE_STEP_SELECTED)
+    /* Configure custom step profile */
+    step_config = (step_config_t){
+        .step_interval_ms = 5000, /* Time between step changes (5 seconds) */
+        .num_steps = 9,           /* Number of steps in the sequence */
+        .steps = {0, 25, 0, 50, 0, 75, 0, 100, 0}, /* Step values (0-100%) */
+        .cycles = 1,              /* Number of cycles to repeat */
+        .ping_pong = false        /* Ping-pong (forward then reverse) if true */
+    };
+#elif defined(PWM_PROFILE_TRAPEZOID_SELECTED)
     /* Configure custom trapezoidal profile */
-    active_trapezoid_config = (trapezoid_config_t){
+    trapezoid_config = (trapezoid_config_t){
         .duration_ms = 20000,                   // 20 seconds total duration
         .ramp_up_ms = 5000,                     // 5 seconds ramp up
         .hold_ms = 10000,                       // 10 seconds hold at maximum
@@ -133,7 +171,11 @@ int main(void)
         .cycles = 2,                            // Repeat 2 times
         .auto_repeat = false                    // No auto-repeat
     };
-    
+#else
+    /* No profile selected */   
+#endif
+
+
     /***************************************************************************
      * MAIN LOOP
      * 
@@ -328,9 +370,22 @@ static sys_state_t state_init(void)
     streaming_active = 1U;
     
     /* Configure default PWM profile */
-    current_profile = PWM_PROFILE_TRAPEZOID;    // Default trapezoidal profile
-    g_profile_start_time = 0U;                  // Reset profile start time
+#if defined(PWM_PROFILE_TRAPEZOID_SELECTED)
+    current_profile = PWM_PROFILE_TRAPEZOID;            // Default trapezoidal profile
+    pwm_set_trapezoid_config(&trapezoid_config); // Configure active trapezoidal profile
+#elif defined(PWM_PROFILE_LINEAR_SELECTED)
+    current_profile = PWM_PROFILE_LINEAR;               // Default linear profile   
+    pwm_set_linear_config(&linear_config);      // Configure active linear profile
+#elif defined(PWM_PROFILE_STEP_SELECTED)
+    current_profile = PWM_PROFILE_STEP;             // Default trapezoidal profile
+    pwm_set_step_config(&step_config);       // Configure active step profile
+#else
+    current_profile = PWM_PROFILE_NONE;                 // No profile selected 
+#endif
     
+    /* Reset profile start time */
+    g_profile_start_time = 0U;    
+
     /* Configure timing rates */
     timing_configure(RATE_1000_HZ, 0);          // Main loop at 1 kHz
     
@@ -343,7 +398,7 @@ static sys_state_t state_init(void)
     fifo_init(&g_fifo_pong);
     
     /* Configure active trapezoidal profile */
-    pwm_set_trapezoid_config(&active_trapezoid_config);
+    // pwm_set_trapezoid_config(&active_trapezoid_config);
     
     return SYS_STATE_IDLE;
 }
@@ -518,32 +573,32 @@ static sys_state_t state_pwm_control(void)
     switch (current_profile)
     {
         case PWM_PROFILE_TRAPEZOID:
-            profile_result = execute_trapezoid_profile(elapsed_ms, &active_trapezoid_config);
+            profile_result = execute_trapezoid_profile(elapsed_ms, &trapezoid_config);
             break;
             
         case PWM_PROFILE_LINEAR:
             {
-                linear_config_t linear_config = {
-                    .duration_ms = 30000,
-                    .start_value = 0,
-                    .end_value = 100,
-                    .cycles = 1,
-                    .bidirectional = false,
-                    .slew_rate = 0.0f
-                };
+                // linear_config_t linear_config = {
+                //     .duration_ms = 30000,
+                //     .start_value = 0,
+                //     .end_value = 100,
+                //     .cycles = 1,
+                //     .bidirectional = false,
+                //     .slew_rate = 0.0f
+                // };
                 profile_result = execute_linear_profile(elapsed_ms, &linear_config);
             }
             break;
             
         case PWM_PROFILE_STEP:
             {
-                step_config_t step_config = {
-                    .step_interval_ms = 5000,
-                    .num_steps = 9,
-                    .steps = {0, 25, 50, 75, 100, 75, 50, 25, 0},
-                    .cycles = 1,
-                    .ping_pong = false
-                };
+                // step_config_t step_config = {
+                //     .step_interval_ms = 5000,
+                //     .num_steps = 9,
+                //     .steps = {0, 25, 50, 75, 100, 75, 50, 25, 0},
+                //     .cycles = 1,
+                //     .ping_pong = false
+                // };
                 profile_result = execute_step_profile(elapsed_ms, &step_config);
             }
             break;
@@ -554,7 +609,7 @@ static sys_state_t state_pwm_control(void)
             
         default:
             /* Fallback to trapezoidal profile */
-            profile_result = execute_trapezoid_profile(elapsed_ms, &active_trapezoid_config);
+            profile_result = execute_trapezoid_profile(elapsed_ms, &trapezoid_config);
             break;
     }
     
