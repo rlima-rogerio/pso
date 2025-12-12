@@ -56,8 +56,8 @@
  ******************************************************************************/
 // #define PWM_PROFILE_NONE_SELECTED            /* NOT TESTED */
 
-// #define PWM_PROFILE_TRAPEZOID_SELECTED       /* IMPLEMENTED */
-#define PWM_PROFILE_LINEAR_SELECTED          /* IMPLEMENTED */
+ #define PWM_PROFILE_TRAPEZOID_SELECTED       /* IMPLEMENTED */
+//#define PWM_PROFILE_LINEAR_SELECTED          /* IMPLEMENTED */
 // #define PWM_PROFILE_STEP_SELECTED            /* IMPLEMENTED */
 
 // #define PWM_PROFILE_CUSTOM_SELECTED          /* NOT IMPLEMENTED */

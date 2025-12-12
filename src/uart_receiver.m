@@ -6,10 +6,22 @@ close all;
 clc;
 
 %% Configurações
-PORT = '/dev/ttyACM0';      % Windows: 'COM3', Linux: '/dev/ttyACM0'
+sys = computer;
+
+switch sys
+    case {'PCWIN64', 'PCWIN'}
+        PORT = 'COM3';
+        
+    case {'GLNXA64', 'GLNX86'}
+        PORT = '/dev/ttyACM0';
+        
+    otherwise
+        error('Sistema operacional não suportado: %s', sys);
+end
+
 BAUDRATE = 115200;
-OUTPUT_MAT = 'pso_data.mat';
-OUTPUT_TXT = 'pso_data.txt';
+OUTPUT_MAT = 'daq.mat';
+OUTPUT_TXT = 'daq.txt';
 
 % Constantes do protocolo
 STX = hex2dec('FE');
