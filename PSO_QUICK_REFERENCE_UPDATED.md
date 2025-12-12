@@ -506,16 +506,16 @@ python3 -m serial.tools.miniterm /dev/ttyACM0 115200
 
 ## Method Comparison
 
-| Feature | Edge-Count (Old) | Edge-Period (New) |
-|---------|-----------------|-------------------|
-| Update rate | 10 Hz fixed | Per edge (instant) |
-| Latency | 100 ms | 5-8 μs |
-| Low RPM min | ~60 RPM | ~15 RPM |
-| Resolution | ~0.1 RPM | ~0.001 RPM |
-| Timer use | Free-run counter | Capture + timeout |
-| ISR | Timer3 only | **WTimer1A + Timer3** |
-| CPU load | 0.001% | <0.001% |
-| Accuracy | Good | Excellent |
+|   Feature   | Edge-Count (Old)  |    Edge-Period (New)  |
+|-------------|-------------------|-----------------------|
+| Update rate | 10 Hz fixed       | Per edge (instant)    |
+| Latency     | 100 ms            | 5-8 μs                |
+| Low RPM min | ~60 RPM           | ~15 RPM               |
+| Resolution  | ~0.1 RPM          | ~0.001 RPM            |
+| Timer use   | Free-run counter  | Capture + timeout     |
+| ISR         | Timer3 only       | **WTimer1A + Timer3** |
+| CPU load    | 0.001%            | <0.001%               |
+| Accuracy    | Good              | Excellent             |
 
 ---
 

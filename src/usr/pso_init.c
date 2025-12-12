@@ -42,24 +42,6 @@
 #include "pso_init.h"
 #include "uart.h"
 
-/*******************************************************************************
- * FUNCTION: myISR_Config
- * 
- * DESCRIPTION:
- *     Placeholder for Interrupt Service Routine configuration.
- *     Currently empty - intended for future interrupt setup.
- * 
- * PARAMETERS:
- *     None
- * 
- * RETURNS:
- *     void
- *******************************************************************************/
-void myISR_Config()
-{
-    /* Function intentionally left empty for future implementation */
-    /* Placeholder for interrupt service routine configuration */
-}
 
 /*******************************************************************************
  * FUNCTION: PSO_UART0Config
@@ -575,7 +557,9 @@ void pso_rpm_config(void)
     WTIMER1_CFG_R = 0x00000004;                     /* 32-bit wide timer (mesmo da versão funcional) */
     
     /* CORREÇÃO CRÍTICA: Configurar modo CAPTURE com TACDIR */
-    WTIMER1_TAMR_R = TIMER_TAMR_TAMR_CAP | TIMER_TAMR_TACDIR; /* Capture mode, count up */
+    // WTIMER1_TAMR_R = TIMER_TAMR_TAMR_CAP | TIMER_TAMR_TACDIR; /* Capture mode, count up */
+    WTIMER1_TAMR_R = TIMER_TAMR_TAMR_CAP | TIMER_TAMR_TACMR | TIMER_TAMR_TACDIR;
+
     
     /* Configure to capture on RISING edges */
     WTIMER1_CTL_R &= ~TIMER_CTL_TAEVENT_M;          /* Clear event bits */
