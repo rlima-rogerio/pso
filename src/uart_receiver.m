@@ -1,4 +1,5 @@
-% PSO Data Acquisition - MATLAB Receiver (VERSÃO FINAL CORRIGIDA)
+% ==================================================================
+% PSO Data Acquisition - MATLAB Receiver
 % ==================================================================
 
 clear all;

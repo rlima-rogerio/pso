@@ -517,13 +517,37 @@ void PSO_ADCConfig()
 void pso_rpm_config(void)
 {
     /**************************************************************************
-     * PART 1: Configure Timer3A - Periodic 100ms interrupt for timeout check
+     * PART 1: Configure Timer3A - Periodic 100ms interrupt for RPM calculation
      *************************************************************************/
-    /* ... existing Timer3 configuration remains the same ... */
     
+    /* Enable Timer3 clock and wait for readiness */
+    SYSCTL_RCGCTIMER_R |= SYSCTL_RCGCTIMER_R3;
+    while(!(SYSCTL_PRTIMER_R & SYSCTL_PRTIMER_R3)) {}  /* Wait until ready */
+
+    /* Disable timer before configuration */
+    TIMER3_CTL_R &= ~TIMER_CTL_TAEN;
+
+    /* Configure as 32-bit periodic timer counting up */
+    TIMER3_CFG_R = TIMER_CFG_32_BIT_TIMER;          /* 32-bit configuration */
+    TIMER3_TAMR_R = TIMER_TAMR_TAMR_PERIOD | TIMER_TAMR_TACDIR; /* Periodic, count up */
+
+    /* Load interval for 100ms (40MHz / 4,000,000 = 100ms) */
+    TIMER3_TAILR_R = 4000000 - 1;                   /* 0x003D08FF */
+
+    /* Enable timeout interrupt */
+    TIMER3_IMR_R |= TIMER_IMR_TATOIM;
+
+    /* Clear any pending interrupts */
+    TIMER3_ICR_R = TIMER_ICR_TATOCINT;
+
+    /* Start timer */
+    TIMER3_CTL_R |= TIMER_CTL_TAEN;
+
+    /* Enable Timer3A interrupt in NVIC (IRQ 35) */
+    NVIC_EN1_R |= (1 << 3);                         /* Enable interrupt 35 */
+
     /**************************************************************************
      * PART 2: Configure WTimer1A - Edge Capture Mode on PC6
-     *         (NOT edge-count mode anymore)
      *************************************************************************/
     
     /* Configure GPIO PC6 for WT1CCP0 input */
@@ -532,10 +556,13 @@ void pso_rpm_config(void)
     
     GPIO_PORTC_DIR_R &= ~GPIO_PIN_6;                /* PC6 as input */
     GPIO_PORTC_AFSEL_R |= GPIO_PIN_6;               /* Enable alternate function */
+
+    /* CORREÇÃO CRÍTICA: Configurar PCTL corretamente */
+    GPIO_PORTC_PCTL_R = (GPIO_PORTC_PCTL_R & ~GPIO_PCTL_PC6_M) | GPIO_PCTL_PC6_WT1CCP0;
+
     GPIO_PORTC_DEN_R |= GPIO_PIN_6;                 /* Enable digital */
     GPIO_PORTC_PUR_R |= GPIO_PIN_6;                 /* Enable pull-up resistor */
     GPIO_PORTC_AMSEL_R &= ~GPIO_PIN_6;              /* Disable analog */
-    GPIO_PORTC_PCTL_R |= GPIO_PCTL_PC6_WT1CCP0;     /* Port mux for WT1CCP0 */
     
     /* Enable Wide Timer1 clock */
     SYSCTL_RCGCWTIMER_R |= SYSCTL_RCGCWTIMER_R1;
@@ -545,42 +572,55 @@ void pso_rpm_config(void)
     WTIMER1_CTL_R &= ~TIMER_CTL_TAEN;
     
     /* Configure as 32-bit wide timer */
-    WTIMER1_CFG_R = TIMER_CFG_32_BIT_TIMER;         /* 32-bit timer */
+    WTIMER1_CFG_R = 0x00000004;                     /* 32-bit wide timer (mesmo da versão funcional) */
     
-    /* Configure CAPTURE mode (not edge-count mode) */
-    WTIMER1_TAMR_R = TIMER_TAMR_TAMR_CAP;           /* Capture mode */
+    /* CORREÇÃO CRÍTICA: Configurar modo CAPTURE com TACDIR */
+    WTIMER1_TAMR_R = TIMER_TAMR_TAMR_CAP | TIMER_TAMR_TACDIR; /* Capture mode, count up */
     
     /* Configure to capture on RISING edges */
     WTIMER1_CTL_R &= ~TIMER_CTL_TAEVENT_M;          /* Clear event bits */
     WTIMER1_CTL_R |= TIMER_CTL_TAEVENT_POS;         /* Capture on rising edge */
     
+    /* Set maximum count value */
+    WTIMER1_TAILR_R = 0xFFFFFFFF;                   /* Count to max */
+
     /* No prescaler - maximum resolution */
     WTIMER1_TAPR_R = 0;
     
-    /* Configure input capture to snapshot timer value on edge */
-    WTIMER1_CTL_R |= TIMER_CTL_TAOTE;               /* Trigger output enable */
-    WTIMER1_CTL_R |= TIMER_CTL_TAPWML;              /* PWM inverted mode (not used) */
+    /* REMOVER estas linhas (não são necessárias para capture mode) */
+    /* WTIMER1_CTL_R |= TIMER_CTL_TAOTE; */         /* Não necessário */
+    /* WTIMER1_CTL_R |= TIMER_CTL_TAPWML; */        /* Não necessário */
     
     /* Enable capture interrupt */
     WTIMER1_IMR_R |= TIMER_IMR_CAEIM;               /* Enable capture event interrupt */
     
     /* Clear any pending interrupts */
     WTIMER1_ICR_R = TIMER_ICR_CAECINT;
-    
+
     /* Enable Wide Timer1A */
     WTIMER1_CTL_R |= TIMER_CTL_TAEN;
     
-    /* Enable WTimer1A interrupt in NVIC (IRQ 32) */
-    NVIC_EN1_R |= (1 << 0);                         /* Enable interrupt 32 */
-    
+    /* Habilitar no NVIC - WTimer1A é IRQ 96 */
+    NVIC_EN3_R |= (1 << 0);  // Habilita IRQ 96 (WTimer1A)
+
     /**************************************************************************
-     * SYSTEM OPERATION:
-     * 1. WTimer1A runs continuously at 40MHz (25ns resolution)
-     * 2. On each rising edge on PC6, timer value is captured
-     * 3. ISR calculates period between edges
-     * 4. Timer3A checks for timeout (no edges for 2 seconds = 0 RPM)
+     * DEBUG: Configure test pins for verification
      *************************************************************************/
+    /* Habilitar Port D para debug */
+    SYSCTL_RCGCGPIO_R |= SYSCTL_RCGCGPIO_R3;
+    while(!(SYSCTL_PRGPIO_R & SYSCTL_PRGPIO_R3)) {}
+
+    /* PD6 para indicar Timer3 interrupções */
+    GPIO_PORTD_DIR_R |= GPIO_PIN_6;
+    GPIO_PORTD_DEN_R |= GPIO_PIN_6;
+    GPIO_PORTD_DATA_R &= ~GPIO_PIN_6;
+
+    /* PD7 para indicar WTimer1 interrupções */
+    GPIO_PORTD_DIR_R |= GPIO_PIN_7;
+    GPIO_PORTD_DEN_R |= GPIO_PIN_7;
+    GPIO_PORTD_DATA_R &= ~GPIO_PIN_7;
 }
+
 
 /*******************************************************************************
  * FUNCTION: pso_pwm_config
@@ -634,7 +674,7 @@ void pso_pwm_config()
     WTIMER1_CTL_R &= ~(TIMER_CTL_TBEN);
     
     /* Configure as 16-bit timer (for PWM generation) */
-    WTIMER1_CFG_R |= TIMER_CFG_16_BIT;
+    // WTIMER1_CFG_R |= TIMER_CFG_16_BIT;
     
     /* Configure PWM mode and periodic timer mode */
     WTIMER1_TBMR_R |= (TIMER_TBMR_TBAMS |           /* PWM mode enabled */
