@@ -477,13 +477,20 @@ static sys_state_t state_timing(void)
  ******************************************************************************/
 static sys_state_t state_processing(void)
 {
-    uint32_t raw_rpm;
-
-    /* Get raw RPM count and calculate scaled RPM */
-    raw_rpm = rpm_get_raw_count();
-    g_scaled_rpm = rpm_calculate(g_pulse_diff, RPM_CALC_PERIOD_MS, BLADE_NUMBER);
-
-    /* Collect and process data into packet */
+    uint32_t current_rpm;
+    uint32_t edge_interval_us;
+    
+    /* Get RPM directly from ISR calculation (period-based) */
+    current_rpm = rpm_get_value();
+    
+    /* Optional: Apply moving average filter */
+    rpm_update_filter(current_rpm);
+    g_scaled_rpm = rpm_get_filtered();
+    
+    /* Debug information */
+    edge_interval_us = rpm_get_edge_interval_us();
+    
+    /* ... rest of existing code ... */
     packet_data(&dp);
     copy_data(uart_tx_buffer, &dp);
     

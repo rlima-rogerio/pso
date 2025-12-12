@@ -48,14 +48,16 @@
 /*******************************************************************************
  * GLOBAL VARIABLES (External Declarations)
  *******************************************************************************/
-extern g_led_toggle_flag;                    /* Toggle LED flag - external */
+extern uint8_t;                    /* Toggle LED flag - external */
 extern uart_raw_data_t g_uart0_data;         /* UART0 receive buffer - external */
+extern g_led_toggle_flag;                    /* Toggle LED flag - external */
 
 /*******************************************************************************
  * MODULE-SPECIFIC GLOBAL VARIABLES
  *******************************************************************************/
 uint8_t g_timer_a0_scan_flag = 0U;           /* Timer0A scan completion flag */
 volatile uint32_t g_timer_a3_scan_flag = 0U; /* Timer3A scan flag (RPM ready) */
+
 
 /*******************************************************************************
  * ADC DATA BUFFERS
@@ -72,7 +74,16 @@ volatile uint32_t adc1_buffer[3];            /* ADC1 channel data buffer */
  * TIMING AND MEASUREMENT VARIABLES
  *******************************************************************************/
 uint32_t wt1cpp0_tav_buffer;                 /* Wide Timer 1 capture buffer */
-uint32_t g_pulse_diff;                       /* Pulse difference for RPM calc */
+
+/*******************************************************************************
+ * RPM MEASUREMENT VARIABLES
+ *******************************************************************************/
+extern uint32_t g_edge_interval_us;           /* Period between edges in µs */
+extern uint32_t g_last_edge_time_us;          /* Time of last edge in µs */
+uint32_t g_last_capture_value = 0;         /* Last timer capture value */
+extern uint32_t g_edge_valid_count;           /* Valid edges counter */
+extern uint32_t g_edge_timeout_counter;       /* Timeout for stopped motor */
+
 
 /*******************************************************************************
  * FUNCTION: UART0IntHandler
@@ -141,35 +152,66 @@ void Timer0AIntHandler(void)
     TimerIntClear(TIMER0_BASE, TIMER_TIMA_TIMEOUT);
 }
 
+
 /*******************************************************************************
  * FUNCTION: WTimer1AIntHandler
  *
  * DESCRIPTION:
- *     Wide Timer 1A interrupt handler - error handler only.
- *     This handler should NOT be called as WTimer1 interrupts are disabled.
- *     If triggered, indicates a configuration error or spurious interrupt.
+ *     Edge capture interrupt handler for RPM measurement.
+ *     Calculates period between rising edges with 25ns resolution.
  *
- * PARAMETERS:
- *     None
- *
- * RETURNS:
- *     void
- *
- * ERROR HANDLING:
- *     - Clears any spurious interrupt
- *     - Can be extended to set error flag/counter
- *
- * NOTES:
- *     - This is a safety handler only
- *     - Consider adding error logging if called
  *******************************************************************************/
 void WTimer1AIntHandler(void)
 {
-    /* Clear any spurious interrupt */
-    WTIMER1_ICR_R = TIMER_ICR_CAMCINT;
+    uint32_t current_capture;
+    uint32_t period_ticks;
+    uint32_t period_us;
     
-    /* Optional: Add error handling if this gets called */
-    /* Example: g_wtimer1_error_count++; */
+    /* 1. Get current capture value */
+    current_capture = WTIMER1_TAR_R;
+    
+    /* 2. Calculate period since last edge (handle timer overflow) */
+    if (g_last_capture_value > 0)
+    {
+        if (current_capture >= g_last_capture_value)
+        {
+            /* Normal case - no overflow */
+            period_ticks = current_capture - g_last_capture_value;
+        }
+        else
+        {
+            /* Timer overflow occurred */
+            period_ticks = (0xFFFFFFFF - g_last_capture_value) + current_capture + 1;
+        }
+        
+        /* 3. Convert ticks to microseconds (40MHz = 25ns per tick) */
+        /* period_us = period_ticks / 40 (since 1µs = 40 ticks at 40MHz) */
+        /* Use integer division with rounding: (period_ticks + 20) / 40 */
+        period_us = (period_ticks + 20) / 40;
+        
+        /* 4. Validate period (filter noise/glitches) */
+        if (period_us >= MIN_EDGE_INTERVAL_US && period_us <= MAX_EDGE_INTERVAL_MS * 1000)
+        {
+            g_edge_interval_us = period_us;
+            g_edge_valid_count++;
+            g_edge_timeout_counter = 0;  /* Reset timeout counter */
+            
+            /* 5. Calculate RPM directly here */
+            /* RPM = (60,000,000 / (period_us * BLADE_NUMBER)) */
+            if (period_us > 0)
+            {
+                g_rpm_value = 60000000UL / (period_us * BLADE_NUMBER);
+                g_rpm_ready_flag ^= 0xFF;  /* Signal new RPM available */
+            }
+        }
+    }
+    
+    /* 6. Update last capture value */
+    g_last_capture_value = current_capture;
+    g_last_edge_time_us = get_system_time_us();  /* Need system time function */
+    
+    /* 7. Clear interrupt flag */
+    WTIMER1_ICR_R = TIMER_ICR_CAECINT;
 }
 
 /*******************************************************************************
@@ -277,48 +319,35 @@ void WTimer5BIntHandler(void)
  *     - RPM calculation completed in main loop using g_pulse_diff
  *     - Toggles LED and debug pins for visual feedback
  *******************************************************************************/
+/*******************************************************************************
+ * FUNCTION: Timer3AIntHandler
+ *
+ * DESCRIPTION:
+ *     Timer3A interrupt handler (100ms) for timeout detection.
+ *     Only checks if motor has stopped (no edges detected).
+ *
+ *******************************************************************************/
 void Timer3AIntHandler(void)
 {
-    static uint32_t last_rpm_count = 0;  /* Previous pulse count */
-    uint32_t current_count;              /* Current pulse count */
-    uint32_t pulse_diff;                 /* Pulses in last 100ms */
-
-    /* 1. Clear the timer interrupt flag FIRST (critical) */
+    /* 1. Clear the timer interrupt flag */
     TIMER3_ICR_R |= TIMER_ICR_TATOCINT;
-
-    /* 2. Read current pulse count from Wide Timer 1A */
-    current_count = WTIMER1_TAV_R;
-
-    /* 3. Calculate pulse difference with 32-bit overflow handling */
-    if (current_count >= last_rpm_count)
+    
+    /* 2. Increment timeout counter */
+    g_edge_timeout_counter += RPM_CALC_PERIOD_MS;
+    
+    /* 3. Check for motor stopped condition */
+    if (g_edge_timeout_counter >= RPM_STOP_TIMEOUT_MS)
     {
-        /* Normal case: no counter overflow */
-        pulse_diff = current_count - last_rpm_count;
+        g_rpm_value = 0;
+        g_edge_interval_us = 0;
+        g_rpm_ready_flag ^= 0xFF;  /* Signal RPM update (to 0) */
     }
-    else
-    {
-        /* Counter overflow occurred (wrapped from 0xFFFFFFFF to 0) */
-        pulse_diff = (0xFFFFFFFF - last_rpm_count) + current_count + 1;
-    }
-
-    /* 4. Store pulse difference for main loop RPM calculation */
-    g_pulse_diff = pulse_diff;
-
-    /* 5. Update reference count for next calculation */
-    last_rpm_count = current_count;
-
-    /* 6. Set flag to indicate new RPM value is available */
-    g_timer_a3_scan_flag ^= 0xFF;  /* Toggle flag for main loop detection */
-
-    /* 7. Visual feedback: toggle LED indicator */
+    
+    /* 4. Execute periodic PWM control */
+    increment();
+    
+    /* 5. Toggle LED for visual feedback */
     g_led_toggle_flag ^= 0xFF;
-
-    /* 8. Optional debug pin toggling (scope visualization) */
-    /* DEBUG_ADC_TOGGLE(); */   /* PD6 - ADC timing indicator */
-    /* DEBUG_STATE_TOGGLE(); */  /* PD7 - State machine indicator */
-
-    /* 9. Execute periodic PWM control function */
-    increment();  /* PWM duty cycle adjustment */
 }
 
 /*******************************************************************************

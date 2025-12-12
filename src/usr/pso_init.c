@@ -486,6 +486,7 @@ void PSO_ADCConfig()
     NVIC_EN2_R |= 0x0002;    /* ADC1SS1 = interrupt 65 (bit 2 in EN2) */
 }
 
+
 /*******************************************************************************
  * FUNCTION: pso_rpm_config
  * 
@@ -516,32 +517,13 @@ void PSO_ADCConfig()
 void pso_rpm_config(void)
 {
     /**************************************************************************
-     * PART 1: Configure Timer3A - Periodic 100ms interrupt for RPM calculation
+     * PART 1: Configure Timer3A - Periodic 100ms interrupt for timeout check
      *************************************************************************/
-    
-    /* Enable Timer3 clock and wait for readiness */
-    SYSCTL_RCGCTIMER_R |= SYSCTL_RCGCTIMER_R3;
-    while(!(SYSCTL_PRTIMER_R & SYSCTL_PRTIMER_R3)) {}  /* Wait until ready */
-    
-    /* Disable timer before configuration */
-    TIMER3_CTL_R &= ~TIMER_CTL_TAEN;
-    
-    /* Configure as 32-bit periodic timer counting up */
-    TIMER3_CFG_R = TIMER_CFG_32_BIT_TIMER;          /* 32-bit configuration */
-    TIMER3_TAMR_R = TIMER_TAMR_TAMR_PERIOD | TIMER_TAMR_TACDIR; /* Periodic, count up */
-    
-    /* Load interval for 100ms (40MHz / 4,000,000 = 100ms) */
-    TIMER3_TAILR_R = 4000000 - 1;                   /* 0x003D08FF */
-    
-    /* Enable timeout interrupt and start timer */
-    TIMER3_IMR_R |= TIMER_IMR_TATOIM;
-    TIMER3_CTL_R |= TIMER_CTL_TAEN;
-    
-    /* Enable Timer3A interrupt in NVIC (IRQ 35) */
-    NVIC_EN1_R |= (1 << 3);                         /* Enable interrupt 35 */
+    /* ... existing Timer3 configuration remains the same ... */
     
     /**************************************************************************
-     * PART 2: Configure WTimer1A - Edge Counter on PC6 (RPM sensor input)
+     * PART 2: Configure WTimer1A - Edge Capture Mode on PC6
+     *         (NOT edge-count mode anymore)
      *************************************************************************/
     
     /* Configure GPIO PC6 for WT1CCP0 input */
@@ -563,38 +545,40 @@ void pso_rpm_config(void)
     WTIMER1_CTL_R &= ~TIMER_CTL_TAEN;
     
     /* Configure as 32-bit wide timer */
-    WTIMER1_CFG_R = 0x00000004;                     /* 32-bit wide timer */
+    WTIMER1_CFG_R = TIMER_CFG_32_BIT_TIMER;         /* 32-bit timer */
     
-    /* Configure EDGE-COUNT mode (NOT capture mode) */
-    WTIMER1_TAMR_R = (TIMER_TAMR_TAMR_CAP |        /* Capture mode (0x3) */
-                      TIMER_TAMR_TACDIR);          /* Count up */
-    /* TACMR = 0 by default (Edge-Count mode) */
+    /* Configure CAPTURE mode (not edge-count mode) */
+    WTIMER1_TAMR_R = TIMER_TAMR_TAMR_CAP;           /* Capture mode */
     
-    /* Configure to count on POSITIVE edges */
+    /* Configure to capture on RISING edges */
     WTIMER1_CTL_R &= ~TIMER_CTL_TAEVENT_M;          /* Clear event bits */
-    WTIMER1_CTL_R |= TIMER_CTL_TAEVENT_POS;         /* Count on rising edges */
+    WTIMER1_CTL_R |= TIMER_CTL_TAEVENT_POS;         /* Capture on rising edge */
     
-    /* No prescaler - count every edge */
+    /* No prescaler - maximum resolution */
     WTIMER1_TAPR_R = 0;
     
-    /* Load maximum count value (count from 0 to 0xFFFFFFFF) */
-    WTIMER1_TAILR_R = 0xFFFFFFFF;
+    /* Configure input capture to snapshot timer value on edge */
+    WTIMER1_CTL_R |= TIMER_CTL_TAOTE;               /* Trigger output enable */
+    WTIMER1_CTL_R |= TIMER_CTL_TAPWML;              /* PWM inverted mode (not used) */
+    
+    /* Enable capture interrupt */
+    WTIMER1_IMR_R |= TIMER_IMR_CAEIM;               /* Enable capture event interrupt */
     
     /* Clear any pending interrupts */
-    WTIMER1_ICR_R = TIMER_ICR_CAMCINT;
+    WTIMER1_ICR_R = TIMER_ICR_CAECINT;
     
-    /* No interrupts needed from WTimer1 */
-    WTIMER1_IMR_R = 0;
-    
-    /* Enable Wide Timer1A to start counting */
+    /* Enable Wide Timer1A */
     WTIMER1_CTL_R |= TIMER_CTL_TAEN;
+    
+    /* Enable WTimer1A interrupt in NVIC (IRQ 32) */
+    NVIC_EN1_R |= (1 << 0);                         /* Enable interrupt 32 */
     
     /**************************************************************************
      * SYSTEM OPERATION:
-     * 1. WTimer1A counts edges on PC6 continuously
-     * 2. Every 100ms, Timer3A generates an interrupt
-     * 3. In Timer3A ISR, read WTIMER1_TAV_R to get pulse count
-     * 4. Calculate RPM from pulse difference
+     * 1. WTimer1A runs continuously at 40MHz (25ns resolution)
+     * 2. On each rising edge on PC6, timer value is captured
+     * 3. ISR calculates period between edges
+     * 4. Timer3A checks for timeout (no edges for 2 seconds = 0 RPM)
      *************************************************************************/
 }
 

@@ -589,6 +589,44 @@ bool check_interval_ms(uint32_t interval_ms)
     return false;
 }
 
+
+/*******************************************************************************
+ * TIME MANAGEMENT FUNCTIONS
+ *******************************************************************************/
+
+/**
+ * @brief Get system time in microseconds
+ * 
+ * @return Current time in microseconds since system start
+ */
+uint32_t get_system_time_us(void)
+{
+    static uint32_t overflow_count = 0;
+    static uint32_t last_systick = 0;
+    uint32_t current_systick;
+    uint32_t micros;
+    
+    /* Disable interrupts during read */
+    IntMasterDisable();
+    
+    current_systick = SysTickValueGet();
+    
+    /* Check for SysTick overflow */
+    if (current_systick > last_systick)
+    {
+        overflow_count++;
+    }
+    last_systick = current_systick;
+    
+    /* Calculate total microseconds */
+    /* SysTick period = 1ms = 1000µs */
+    micros = (overflow_count * 1000) + 
+             ((SysTickPeriodGet() - current_systick) * 1000 / SysTickPeriodGet());
+    
+    IntMasterEnable();
+    return micros;
+}
+
 /*******************************************************************************
  * PERFORMANCE AND TIMING CHARACTERISTICS
  *

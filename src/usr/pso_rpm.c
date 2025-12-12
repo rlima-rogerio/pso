@@ -2,25 +2,8 @@
  * FILENAME:    pso_rpm.c
  *
  * DESCRIPTION:
- *       Implementation of RPM (Revolutions Per Minute) measurement system.
- *       Uses Wide Timer 1A as edge counter on PC6 and Timer 3A for periodic
- *       RPM calculation (10 Hz).
+ *       Implementation of RPM measurement using edge-period method.
  *
- * HARDWARE CONFIGURATION:
- *       - PC6 (WT1CCP0) - Hall sensor or encoder input
- *       - Wide Timer 1A - Edge counter mode, no interrupts
- *       - Timer 3A - 100ms periodic interrupt for RPM calculation
- *
- * MEASUREMENT ALGORITHM:
- *       1. Wide Timer 1A counts rising edges continuously
- *       2. Every 100ms, Timer3A ISR:
- *          a. Reads current count from WTIMER1_TAV_R
- *          b. Calculates pulse difference (handles overflow)
- *          c. Converts to RPM: (pulses * 600) / BLADE_NUMBER
- *       3. Main loop reads g_rpm_value when g_rpm_ready_flag is set
- *
- * AUTHOR:      Rogerio Lima (Original)
- *              Refactored: December 2025
  ******************************************************************************/
 
 #include <stdint.h>
@@ -40,153 +23,164 @@
  * GLOBAL VARIABLE DEFINITIONS
  ******************************************************************************/
 
-/* RPM measurement variables (defined in pso_isr.c, declared here for clarity) */
-volatile uint32_t g_rpm_value = 0;          /* Current RPM value */
-volatile uint32_t g_rpm_raw_count = 0;      /* Raw pulse count */
-volatile uint32_t g_rpm_ready_flag = 0U;    /* New data flag */
+/* RPM measurement variables */
+uint32_t g_rpm_value = 0;
+uint32_t g_edge_interval_us = 0;
+uint32_t g_last_edge_time_us = 0;
+uint32_t g_edge_valid_count = 0;
+uint32_t g_edge_timeout_counter;
+uint32_t g_rpm_ready_flag = 0;
 
-/* Intermediate variables */
-uint32_t pulse_diff = 0;                /* Pulse difference */
 
+
+/* Filtro de média móvel */
+static uint32_t rpm_filter_buffer[RPM_FILTER_SAMPLES];
+static uint8_t rpm_filter_index = 0;
+static uint8_t rpm_filter_count = 0;
 
 /*******************************************************************************
  * PUBLIC FUNCTION IMPLEMENTATIONS
  ******************************************************************************/
 
-
-
-/**
- * @brief Get current RPM value
- * 
- * @return Current RPM (0 if stopped or invalid)
- */
 uint32_t rpm_get_value(void)
 {
     return g_rpm_value;
 }
 
-/**
- * @brief Check if new RPM measurement is available
- * 
- * @return true if new data available, false otherwise
- */
 bool rpm_is_ready(void)
 {
     return (g_rpm_ready_flag != 0);
 }
 
-/**
- * @brief Clear RPM ready flag
- * 
- * Thread-safe clear of ready flag.
- */
 void rpm_clear_ready_flag(void)
 {
-    /* Disable interrupts during flag clear */
     IntMasterDisable();
     g_rpm_ready_flag = 0;
     IntMasterEnable();
 }
 
-/**
- * @brief Get raw pulse count from Wide Timer 1A
- * 
- * @return Current cumulative pulse count
- */
 uint32_t rpm_get_raw_count(void)
 {
+    /* Retorna o contador do WTimer1 para compatibilidade */
     return WTIMER1_TAV_R;
 }
 
-/**
- * @brief Calculate RPM from pulse difference
- * 
- * @param pulse_diff Number of pulses in measurement period
- * @param period_ms Measurement period in milliseconds
- * @param pulses_per_rev Pulses per complete revolution
- * 
- * @return Calculated RPM
- */
-uint32_t rpm_calculate(uint32_t pulse_diff, 
-                       uint32_t period_ms, 
-                       uint32_t pulses_per_rev)
+uint32_t rpm_calculate(uint32_t pulse_diff, uint32_t period_ms, uint32_t pulses_per_rev)
 {
-    /* Avoid division by zero */
+    /* Mantida para compatibilidade - usa fórmula antiga */
     if (period_ms == 0 || pulses_per_rev == 0)
     {
         return 0;
     }
     
-    /* Formula: RPM = (pulses * 60000) / (period_ms * pulses_per_rev)
-     * 
-     * Derivation:
-     * - pulse_diff pulses in period_ms milliseconds
-     * - pulses_per_second = (pulse_diff * 1000) / period_ms
-     * - pulses_per_minute = pulses_per_second * 60
-     * - RPM = pulses_per_minute / pulses_per_rev
-     * 
-     * Simplified: RPM = (pulse_diff * 60000) / (period_ms * pulses_per_rev)
-     * 
-     * For 100ms period: RPM = (pulse_diff * 600) / pulses_per_rev
-     */
-    
-    uint32_t rpm = (pulse_diff * 60000UL) / (period_ms * pulses_per_rev);
-    
-    return rpm;
+    return (pulse_diff * 60000UL) / (period_ms * pulses_per_rev);
 }
 
-/**
- * @brief Validate RPM reading
- * 
- * @param rpm RPM value to validate
- * @return true if valid, false if out of range
- */
 bool rpm_is_valid(uint32_t rpm)
 {
-    /* Check if RPM is within valid range */
+    /* Verificação simplificada - 0 RPM é válido */
     if (rpm == 0)
     {
-        return true;  /* Zero is valid (motor stopped) */
+        return true;
     }
     
     return (rpm >= RPM_MIN_VALID && rpm <= RPM_MAX_VALID);
 }
 
-/**
- * @brief Reset RPM measurement system
- * 
- * Clears counters and flags without disabling timers.
- */
 void rpm_reset(void)
 {
-    /* Disable interrupts during reset */
     IntMasterDisable();
     
     g_rpm_value = 0;
-    g_rpm_raw_count = 0;
+    g_edge_interval_us = 0;
+    g_edge_valid_count = 0;
+    g_edge_timeout_counter = 0;
     g_rpm_ready_flag = 0;
-    g_timer_a3_scan_flag = 0;
+    
+    /* Reset do filtro */
+    rpm_reset_filter();
     
     IntMasterEnable();
 }
 
-/**
- * @brief Get pulse difference from last measurement
- * 
- * @return Number of pulses in last measurement period
- */
-uint32_t rpm_get_delta(void)
+/*******************************************************************************
+ * NEW PERIOD-BASED FUNCTIONS
+ ******************************************************************************/
+
+uint32_t rpm_from_period_us(uint32_t period_us, uint32_t pulses_per_rev)
 {
-    return pulse_diff;
+    if (period_us == 0 || pulses_per_rev == 0)
+    {
+        return 0;
+    }
+    
+    /* RPM = 60,000,000 / (period_us * pulses_per_rev) */
+    uint64_t denominator = (uint64_t)period_us * pulses_per_rev;
+    
+    if (denominator == 0)
+    {
+        return 0;
+    }
+    
+    return (uint32_t)(60000000UL / denominator);
 }
 
-/**
- * @brief Convert frequency (Hz) to RPM
- * 
- * @param frequency_hz Pulse frequency in Hz
- * @param pulses_per_rev Pulses per revolution
- * @return Equivalent RPM
- */
+uint32_t rpm_get_edge_interval_us(void)
+{
+    return g_edge_interval_us;
+}
+
+bool rpm_is_stopped(void)
+{
+    return (g_edge_timeout_counter >= RPM_STOP_TIMEOUT_MS);
+}
+
+uint32_t rpm_get_filtered(void)
+{
+    uint32_t sum = 0;
+    uint8_t i;
+    
+    if (rpm_filter_count == 0)
+    {
+        return g_rpm_value;
+    }
+    
+    for (i = 0; i < rpm_filter_count; i++)
+    {
+        sum += rpm_filter_buffer[i];
+    }
+    
+    return sum / rpm_filter_count;
+}
+
+void rpm_update_filter(uint32_t new_rpm)
+{
+    rpm_filter_buffer[rpm_filter_index] = new_rpm;
+    rpm_filter_index = (rpm_filter_index + 1) % RPM_FILTER_SAMPLES;
+    
+    if (rpm_filter_count < RPM_FILTER_SAMPLES)
+    {
+        rpm_filter_count++;
+    }
+}
+
+void rpm_reset_filter(void)
+{
+    uint8_t i;
+    
+    for (i = 0; i < RPM_FILTER_SAMPLES; i++)
+    {
+        rpm_filter_buffer[i] = 0;
+    }
+    
+    rpm_filter_index = 0;
+    rpm_filter_count = 0;
+}
+
+/*******************************************************************************
+ * COMPATIBILITY FUNCTIONS
+ ******************************************************************************/
+
 uint32_t rpm_from_frequency(uint32_t frequency_hz, uint32_t pulses_per_rev)
 {
     if (pulses_per_rev == 0)
@@ -197,128 +191,7 @@ uint32_t rpm_from_frequency(uint32_t frequency_hz, uint32_t pulses_per_rev)
     return (frequency_hz * 60) / pulses_per_rev;
 }
 
-/**
- * @brief Convert RPM to frequency (Hz)
- * 
- * @param rpm RPM value
- * @param pulses_per_rev Pulses per revolution
- * @return Equivalent frequency in Hz
- */
 uint32_t rpm_to_frequency(uint32_t rpm, uint32_t pulses_per_rev)
 {
     return (rpm * pulses_per_rev) / 60;
 }
-
-
-
-/*******************************************************************************
- * TIMER3A ISR - RPM CALCULATION
- * 
- * NOTE: The actual ISR implementation is in pso_isr.c (Timer3AIntHandler)
- * 
- * This ISR:
- * 1. Reads current pulse count from WTIMER1_TAV_R
- * 2. Calculates pulse difference (handles 32-bit overflow)
- * 3. Converts to RPM using formula: (pulse_diff * 600) / BLADE_NUMBER
- * 4. Sets g_rpm_ready_flag to indicate new data
- * 5. Toggles g_timer_a3_scan_flag for debugging
- * 
- * ISR Execution Time: ~10-15 µs (measured with oscilloscope on debug pin)
- ******************************************************************************/
-
-/*******************************************************************************
- * CALIBRATION AND TESTING
- ******************************************************************************/
-
-/**
- * @brief Test RPM measurement with known frequency
- * 
- * Connect a signal generator to PC6 and verify:
- * 
- * Test 1: 100 Hz input signal
- *   - Expected RPM = (100 * 60) / 2 = 3000 RPM
- *   - pulse_diff per 100ms = 10 pulses
- *   - Calculated RPM = (10 * 600) / 2 = 3000 RPM ✓
- * 
- * Test 2: 1000 Hz input signal
- *   - Expected RPM = (1000 * 60) / 2 = 30000 RPM
- *   - pulse_diff per 100ms = 100 pulses
- *   - Calculated RPM = (100 * 600) / 2 = 30000 RPM ✓
- * 
- * Test 3: 50 Hz input signal
- *   - Expected RPM = (50 * 60) / 2 = 1500 RPM
- *   - pulse_diff per 100ms = 5 pulses
- *   - Calculated RPM = (5 * 600) / 2 = 1500 RPM ✓
- * 
- * Usage in main():
- *   rpm_init();
- *   while(1) {
- *       if (rpm_is_ready()) {
- *           printf("RPM: %lu, Delta: %lu\r\n", 
- *                  rpm_get_value(), rpm_get_delta());
- *           rpm_clear_ready_flag();
- *       }
- *       delay_ms(100);
- *   }
- */
-
-/*******************************************************************************
- * NOTES ON BLADE_NUMBER CONFIGURATION
- ******************************************************************************/
-
-/**
- * BLADE_NUMBER = Number of pulses per complete motor revolution
- * 
- * Common configurations:
- * 
- * 1. Brushless Motor with Hall Sensor:
- *    - 2-pole motor (1 pole pair) → BLADE_NUMBER = 2
- *    - 4-pole motor (2 pole pairs) → BLADE_NUMBER = 4
- *    - 6-pole motor (3 pole pairs) → BLADE_NUMBER = 6
- *    - 8-pole motor (4 pole pairs) → BLADE_NUMBER = 8
- * 
- * 2. Optical Encoder:
- *    - 360 PPR (pulses per revolution) → BLADE_NUMBER = 360
- *    - 1024 PPR encoder → BLADE_NUMBER = 1024
- * 
- * 3. Magnetic Encoder:
- *    - 12 magnets → BLADE_NUMBER = 12
- *    - 24 magnets → BLADE_NUMBER = 24
- * 
- * How to determine BLADE_NUMBER for your motor:
- * 1. Spin motor slowly by hand (or at known RPM)
- * 2. Count pulses on PC6 using oscilloscope
- * 3. BLADE_NUMBER = pulses per complete revolution
- * 
- * Example:
- * - Motor spins 1 complete revolution
- * - Oscilloscope shows 2 pulses on PC6
- * - Therefore: BLADE_NUMBER = 2
- */
-
-/*******************************************************************************
- * PERFORMANCE NOTES
- ******************************************************************************/
-
-/**
- * Timing Measurements (with oscilloscope on debug pins):
- * 
- * Timer3A ISR execution time: 8-12 µs
- * - Read WTIMER1_TAV_R: ~1 µs
- * - Calculate pulse_diff: ~2 µs
- * - Calculate RPM (integer division): ~4 µs
- * - Update variables: ~1 µs
- * - Call increment(): ~2 µs
- * 
- * CPU Usage: ~0.01% (12 µs every 100 ms)
- * 
- * Maximum measurable RPM (theoretical):
- * - With 40 MHz system clock and 32-bit counter
- * - Max edge rate ≈ 10 MHz (conservative)
- * - Max RPM = (10,000,000 * 60) / BLADE_NUMBER
- * - For BLADE_NUMBER=2: Max RPM = 300,000,000 RPM
- * 
- * Practical maximum (limited by sensor):
- * - Hall sensor: typically ~50 kHz → ~1,500,000 RPM
- * - Optical encoder: ~100 kHz → ~3,000,000 RPM
- */
