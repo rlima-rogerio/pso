@@ -167,7 +167,7 @@ int main(void)
         .hold_ms = 10000,                       // 10 seconds hold at maximum
         .ramp_down_ms = 5000,                   // 5 seconds ramp down
         .min_value = 0,                         // Minimum 0% duty cycle
-        .max_value = 100,                       // Maximum 100% duty cycle
+        .max_value = 70,                       // Maximum 100% duty cycle
         .cycles = 2,                            // Repeat 2 times
         .auto_repeat = false                    // No auto-repeat
     };
