@@ -56,9 +56,9 @@
  ******************************************************************************/
 // #define PWM_PROFILE_NONE_SELECTED            /* NOT TESTED */
 
-// #define PWM_PROFILE_TRAPEZOID_SELECTED       /* IMPLEMENTED */
-// #define PWM_PROFILE_LINEAR_SELECTED          /* IMPLEMENTED */
-#define PWM_PROFILE_STEP_SELECTED            /* IMPLEMENTED */
+#define PWM_PROFILE_TRAPEZOID_SELECTED       /* IMPLEMENTED */
+//  #define PWM_PROFILE_LINEAR_SELECTED          /* IMPLEMENTED */
+//#define PWM_PROFILE_STEP_SELECTED            /* IMPLEMENTED */
 
 // #define PWM_PROFILE_CUSTOM_SELECTED          /* NOT IMPLEMENTED */
 // #define PWM_PROFILE_SINE_SELECTED            /* NOT IMPLEMENTED */
@@ -145,7 +145,7 @@ int main(void)
     linear_config = (linear_config_t){
         .duration_ms = 10000,      /* Total profile duration in ms */
         .start_value = 0,      /* Start PWM value (0-100%) */
-        .end_value = 100,        /* End PWM value (0-100%) */
+        .end_value = 70,        /* End PWM value (0-100%) */
         .cycles = 1,           /* Number of cycles to repeat */
         .bidirectional = 0,    /* Ramp up then down if true */
         .slew_rate = 0.01        /* Rate of change (%/ms) - if non-zero overrides duration */
@@ -167,7 +167,7 @@ int main(void)
         .hold_ms = 10000,                       // 10 seconds hold at maximum
         .ramp_down_ms = 5000,                   // 5 seconds ramp down
         .min_value = 0,                         // Minimum 0% duty cycle
-        .max_value = 100,                       // Maximum 100% duty cycle
+        .max_value = 60,                       // Maximum 100% duty cycle
         .cycles = 2,                            // Repeat 2 times
         .auto_repeat = false                    // No auto-repeat
     };
@@ -411,7 +411,7 @@ static sys_state_t state_init(void)
  *       Provides visual standby indication.
  * 
  * PARAMETERS:
- *       None
+ *       Nonepso_data
  * 
  * RETURNS:
  *       sys_state_t - Next system state
@@ -509,7 +509,7 @@ static sys_state_t state_processing(void)
  *       None
  * 
  * RETURNS:
- *       sys_state_t - Next system state
+ *       sys_state_t - pso_dataNext system state
  *                     (SYS_STATE_STREAMING, SYS_STATE_STOPPING, or SYS_STATE_PWM_CONTROL)
  ******************************************************************************/
 static sys_state_t state_streaming(void)
@@ -586,7 +586,7 @@ static sys_state_t state_pwm_control(void)
         case PWM_PROFILE_LINEAR:
             {
                 // linear_config_t linear_config = {
-                //     .duration_ms = 30000,
+                //     pso_data.duration_ms = 30000,
                 //     .start_value = 0,
                 //     .end_value = 100,
                 //     .cycles = 1,
