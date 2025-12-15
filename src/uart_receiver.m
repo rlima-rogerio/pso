@@ -28,39 +28,6 @@ STX = hex2dec('FE');
 PACKET_LENGTH = 21;
 MSG_ID_PSO_DATA_LEN = 14;
 
-%% Funções de Checksum (X.25 CRC-16)
-function crc = crc_init()
-    crc = uint16(hex2dec('FFFF'));
-end
-function crc = accumulate_checksum(data, crc)
-    % Implementação exata do código C com conversões corretas
-    data = uint8(data);
-    crc = uint16(crc);
-    
-    % tmp = data ^ (crc & 0xff)
-    tmp = bitxor(uint8(data), uint8(bitand(crc, uint16(0x00FF))));
-    
-    % tmp ^= (tmp << 4) & 0xff
-    tmp = bitxor(tmp, uint8(bitand(bitshift(uint16(tmp), 4), uint16(0x00FF))));
-    
-    % crc = (crc >> 8) ^ (tmp << 8) ^ (tmp << 3) ^ (tmp >> 4)
-    crc = bitxor(bitshift(crc, -8), bitshift(uint16(tmp), 8));
-    crc = bitxor(crc, bitshift(uint16(tmp), 3));
-    crc = bitxor(crc, bitshift(uint16(tmp), -4));
-    
-    crc = uint16(crc);
-end
-
-function crc = calculate_checksum(packet_bytes)
-    % Replica a lógica exata do C
-    % create_checksum processa msg[1] até msg[18] (19 bytes)
-    crc = crc_init();
-    
-    for i = 2:19  % Bytes 1-18 do protocolo (índices MATLAB 2-19)
-        crc = accumulate_checksum(packet_bytes(i), crc);
-    end
-end
-
 %% Inicializar porta serial
 fprintf('Conectando a %s @ %d bps...\n', PORT, BAUDRATE);
 
@@ -409,3 +376,36 @@ fprintf('Potência: min=%-6.2f  max=%-6.2f  média=%-7.2f W\n', ...
         min(data.power), max(data.power), mean(data.power));
 
 fprintf('\n=== Processo concluído ===\n');
+
+%% Funções de Checksum (X.25 CRC-16)
+function crc = crc_init()
+    crc = uint16(hex2dec('FFFF'));
+end
+function crc = accumulate_checksum(data, crc)
+    % Implementação exata do código C com conversões corretas
+    data = uint8(data);
+    crc = uint16(crc);
+    
+    % tmp = data ^ (crc & 0xff)
+    tmp = bitxor(uint8(data), uint8(bitand(crc, uint16(0x00FF))));
+    
+    % tmp ^= (tmp << 4) & 0xff
+    tmp = bitxor(tmp, uint8(bitand(bitshift(uint16(tmp), 4), uint16(0x00FF))));
+    
+    % crc = (crc >> 8) ^ (tmp << 8) ^ (tmp << 3) ^ (tmp >> 4)
+    crc = bitxor(bitshift(crc, -8), bitshift(uint16(tmp), 8));
+    crc = bitxor(crc, bitshift(uint16(tmp), 3));
+    crc = bitxor(crc, bitshift(uint16(tmp), -4));
+    
+    crc = uint16(crc);
+end
+
+function crc = calculate_checksum(packet_bytes)
+    % Replica a lógica exata do C
+    % create_checksum processa msg[1] até msg[18] (19 bytes)
+    crc = crc_init();
+    
+    for i = 2:19  % Bytes 1-18 do protocolo (índices MATLAB 2-19)
+        crc = accumulate_checksum(packet_bytes(i), crc);
+    end
+end
