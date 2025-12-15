@@ -1,7 +1,5 @@
 %% Voltage and Current Sampling and Scaling
-close all
-clear all
-clc
+
 
 %% Voltage Monitor
 R3 = 1500;
@@ -18,15 +16,13 @@ Rshunt = 0.5e-3;
 RL = 110e3;
 IV_ratio = 1e-3; % 1000 uA/V = 1 mA/V = 0.001 A/V
 Vadc_max = 3.3;
-Vout_max = Vadc_max;
+Vout_max = V_adc_max;
 
 Is_max = Vout_max / (Rshunt * IV_ratio * RL)
 
-% Calculate the maximum output voltage based on the maximum current
-Vout_max = Is_max * Rshunt * IV_ratio * RL;
+sPri
 
-Is = 10; %5 Example
-Vout = Is * Rshunt *IV_ratio * RL
+Vout = Is * Rshunt *(1000) * RL;
 
 
 Imax = Vadc_max/Rshunt; % Maximum current 6600 A

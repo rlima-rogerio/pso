@@ -585,27 +585,12 @@ static sys_state_t state_pwm_control(void)
             
         case PWM_PROFILE_LINEAR:
             {
-                // linear_config_t linear_config = {
-                //     pso_data.duration_ms = 30000,
-                //     .start_value = 0,
-                //     .end_value = 100,
-                //     .cycles = 1,
-                //     .bidirectional = false,
-                //     .slew_rate = 0.0f
-                // };
                 profile_result = execute_linear_profile(elapsed_ms, &linear_config);
             }
             break;
             
         case PWM_PROFILE_STEP:
             {
-                // step_config_t step_config = {
-                //     .step_interval_ms = 5000,
-                //     .num_steps = 9,
-                //     .steps = {0, 25, 50, 75, 100, 75, 50, 25, 0},
-                //     .cycles = 1,
-                //     .ping_pong = false
-                // };
                 profile_result = execute_step_profile(elapsed_ms, &step_config);
             }
             break;

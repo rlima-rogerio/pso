@@ -1,29 +1,25 @@
 #!/usr/bin/env python3
 """
-PSO Data Acquisition - UART Receiver
-=====================================
+PSO Data Acquisition - UART Receiver (VERSÃO OTIMIZADA)
+========================================================
 
-Script Python para receber, decodificar e visualizar dados do sistema PSO
-via comunicação UART.
-
-Requisitos:
-    pip install pyserial numpy matplotlib
+MUDANÇAS:
+- Current e Voltage agora são uint16_t (não int16_t)
+- Voltage em mV (conversão: V = mV / 1000)
+- Current ESCALADO (conversão: A = current_scaled * 0.100717)
 
 Uso:
-    python pso_uart_receiver.py --port /dev/ttyUSB0 --baudrate 115200
-
-Autor: Refatoração 2025
+    python uart_receiver.py --port /dev/ttyACM0 --baudrate 115200
 """
 
 import serial
 import struct
 import argparse
 import time
-from datetime import datetime
 from collections import deque
 import sys
 
-# Tentar importar matplotlib para gráficos (opcional)
+# Tentar importar matplotlib
 try:
     import matplotlib.pyplot as plt
     import matplotlib.animation as animation
@@ -32,10 +28,16 @@ except ImportError:
     print("Warning: matplotlib não disponível. Gráficos desabilitados.")
     MATPLOTLIB_AVAILABLE = False
 
-# Constantes do protocolo
+# ===========================================================================
+# CONSTANTES DO PROTOCOLO
+# ===========================================================================
 STX = 0xFE
 PACKET_LENGTH = 21
-MAX_BUFFER_SIZE = 1000  # Número máximo de amostras no buffer de plotagem
+MAX_BUFFER_SIZE = 1000
+
+# FATOR DE ESCALA DA CORRENTE (OTIMIZADO)
+# I_real(A) = I_scaled × CURRENT_SCALE_FACTOR
+CURRENT_SCALE_FACTOR = 1.0  # 0.100717
 
 
 class PSOPacket:
@@ -61,7 +63,7 @@ class PSOPacket:
     
     def parse(self, data):
         """
-        Parse pacote binário
+        Parse pacote binário (VERSÃO ATUALIZADA)
         
         Formato (21 bytes):
         [0]      STX (0xFE)
@@ -71,8 +73,8 @@ class PSOPacket:
         [6-7]    Accel Y (int16, big-endian)
         [8-9]    Accel Z (int16, big-endian)
         [10-11]  RPM (uint16, big-endian)
-        [12-13]  Current (int16, big-endian, em mA)
-        [14-15]  Voltage (int16, big-endian, em mV)
+        [12-13]  Current (uint16, big-endian, SCALED 0-65535) ← MUDOU!
+        [14-15]  Voltage (uint16, big-endian, em mV)         ← MUDOU!
         [16-17]  Thrust (int16, big-endian, em cN)
         [18]     Throttle (uint8, 0-100%)
         [19-20]  Checksum (uint16, big-endian)
@@ -88,15 +90,32 @@ class PSOPacket:
             if self.stx != STX:
                 return False
             
-            # Unpack payload
-            (self.index, self.accel_x, self.accel_y, self.accel_z,
-             self.rpm, current_raw, voltage_raw, thrust_raw, self.throttle) = \
-                struct.unpack('>HhhhHhhhB', data[2:19])
+            # ================================================================
+            # MUDANÇA PRINCIPAL: Current e Voltage agora são uint16 (H)
+            # ================================================================
+            # ANTES: '>HhhhHhhhB'  (current e voltage eram 'h' = int16)
+            # AGORA: '>HhhhHHHhB'  (current e voltage são 'H' = uint16)
+            # ================================================================
             
-            # Converter para unidades reais
-            self.current = current_raw / 1000.0  # mA para A
-            self.voltage = voltage_raw / 1000.0  # mV para V
-            self.thrust = thrust_raw / 100.0     # cN para N
+            (self.index, self.accel_x, self.accel_y, self.accel_z,
+             self.rpm, current_scaled, voltage_mv, thrust_raw, self.throttle) = \
+                struct.unpack('>HhhhHHHhB', data[2:19])
+            
+            # ================================================================
+            # CONVERSÃO OTIMIZADA
+            # ================================================================
+            
+            # Voltage: mV → V (direto)
+            self.voltage = voltage_mv / 1000.0
+            
+            # Current: SCALED → A (precisa fator de escala)
+            self.current = current_scaled * CURRENT_SCALE_FACTOR
+            # Ou equivalente: self.current = (current_scaled * 6600.0) / 65535.0
+            
+            # Thrust (sem mudança)
+            self.thrust = thrust_raw  # / 100.0 se for em cN
+            
+            # ================================================================
             
             # Unpack checksum
             self.checksum = struct.unpack('>H', data[19:21])[0]
@@ -105,7 +124,8 @@ class PSOPacket:
             self.valid = True
             return True
             
-        except struct.error:
+        except struct.error as e:
+            print(f"Erro no parse: {e}")
             return False
     
     def __str__(self):
@@ -114,9 +134,10 @@ class PSOPacket:
                 f"RPM:{self.rpm:5d} "
                 f"Thr:{self.throttle:3d}% "
                 f"Acc:({self.accel_x:5d},{self.accel_y:5d},{self.accel_z:5d}) "
-                f"V:{self.voltage:6.2f}V "
-                f"I:{self.current:6.3f}A "
-                f"F:{self.thrust:6.2f}N")
+                f"V:{self.voltage:6.3f}V "
+                f"I:{self.current:7.2f}A "
+                f"F:{self.thrust:6.2f}N "
+                f"P:{self.voltage*self.current/1000:.2f}kW")
 
 
 class PSOReceiver:
@@ -151,6 +172,7 @@ class PSOReceiver:
                 timeout=1
             )
             print(f"Conectado a {self.port} @ {self.baudrate} bps")
+            print(f"Fator de escala da corrente: {CURRENT_SCALE_FACTOR:.6f}\n")
             self.start_time = time.time()
             return True
         except serial.SerialException as e:
@@ -208,7 +230,7 @@ class PSOReceiver:
     
     def run_console_mode(self):
         """Modo console - apenas imprime dados"""
-        print("\n=== Modo Console ===")
+        print("\n=== Modo Console (Scaling Otimizado) ===")
         print("Pressione Ctrl+C para parar\n")
         
         self.running = True
@@ -220,14 +242,14 @@ class PSOReceiver:
                 if packet:
                     print(packet)
                     
-                    # # Estatísticas a cada 100 pacotes
-                    # if self.packet_count % 100 == 0:
-                    #     elapsed = time.time() - self.start_time
-                    #     rate = self.packet_count / elapsed
-                    #     error_rate = (self.error_count / 
-                    #                  (self.packet_count + self.error_count) * 100)
-                    #     print(f"\n--- Stats: {self.packet_count} pacotes, "
-                    #           f"{rate:.1f} pkt/s, {error_rate:.1f}% erros ---\n")
+                    # Estatísticas a cada 100 pacotes
+                    if self.packet_count % 100 == 0:
+                        elapsed = time.time() - self.start_time
+                        rate = self.packet_count / elapsed if elapsed > 0 else 0
+                        total = self.packet_count + self.error_count
+                        error_rate = (self.error_count / total * 100) if total > 0 else 0
+                        print(f"\n--- Stats: {self.packet_count} pacotes, "
+                              f"{rate:.1f} pkt/s, {error_rate:.1f}% erros ---\n")
         
         except KeyboardInterrupt:
             print("\n\nParando...")
@@ -239,12 +261,12 @@ class PSOReceiver:
             print("Matplotlib não disponível. Use modo console.")
             return
         
-        print("\n=== Modo Gráfico ===")
+        print("\n=== Modo Gráfico (Scaling Otimizado) ===")
         print("Fechando a janela irá parar o programa\n")
         
         # Configurar figura e subplots
         fig, axes = plt.subplots(3, 2, figsize=(12, 8))
-        fig.suptitle('PSO Data Acquisition - Real Time Monitor')
+        fig.suptitle('PSO Data Acquisition - Real Time Monitor (Optimized Scaling)')
         
         # Configurar cada subplot
         ax_rpm = axes[0, 0]
@@ -276,7 +298,7 @@ class PSOReceiver:
         ax_thr_plot.grid(True)
         
         ax_power.set_title('Power')
-        ax_power.set_ylabel('W')
+        ax_power.set_ylabel('kW')
         ax_power.set_xlabel('Time (s)')
         ax_power.grid(True)
         
@@ -296,9 +318,6 @@ class PSOReceiver:
             if packet:
                 self.update_buffers(packet)
                 
-                # Calcular potência
-                power = packet.voltage * packet.current
-                
                 # Atualizar dados das linhas
                 line_rpm.set_data(self.time_buffer, self.rpm_buffer)
                 line_thr.set_data(self.time_buffer, self.throttle_buffer)
@@ -306,8 +325,8 @@ class PSOReceiver:
                 line_vol.set_data(self.time_buffer, self.voltage_buffer)
                 line_thrust.set_data(self.time_buffer, self.thrust_buffer)
                 
-                # Potência
-                power_buffer = [v * i for v, i in 
+                # Potência em kW
+                power_buffer = [v * i / 1000.0 for v, i in 
                                zip(self.voltage_buffer, self.current_buffer)]
                 line_power.set_data(self.time_buffer, power_buffer)
                 
@@ -334,21 +353,19 @@ class PSOReceiver:
         
         with open(filename, 'w') as f:
             # Cabeçalho
-            f.write("Time,Index,RPM,Throttle,AccelX,AccelY,AccelZ,"
-                   "Current,Voltage,Thrust,Power\n")
+            f.write("Time,Index,RPM,Throttle,Current_A,Voltage_V,Thrust,Power_kW\n")
             
             # Dados
             for i in range(len(self.time_buffer)):
-                power = self.voltage_buffer[i] * self.current_buffer[i]
+                power_kw = (self.voltage_buffer[i] * self.current_buffer[i]) / 1000.0
                 f.write(f"{self.time_buffer[i]:.3f},"
                        f"{i},"
                        f"{self.rpm_buffer[i]},"
                        f"{self.throttle_buffer[i]},"
-                       f"0,0,0,"  # Accel não está nos buffers
-                       f"{self.current_buffer[i]:.3f},"
-                       f"{self.voltage_buffer[i]:.2f},"
+                       f"{self.current_buffer[i]:.2f},"
+                       f"{self.voltage_buffer[i]:.3f},"
                        f"{self.thrust_buffer[i]:.2f},"
-                       f"{power:.2f}\n")
+                       f"{power_kw:.3f}\n")
         
         print(f"Dados salvos: {len(self.time_buffer)} amostras")
 
@@ -356,12 +373,12 @@ class PSOReceiver:
 def main():
     """Função principal"""
     parser = argparse.ArgumentParser(
-        description='PSO UART Data Receiver'
+        description='PSO UART Data Receiver (Optimized Scaling)'
     )
     parser.add_argument(
         '--port', '-p',
-        default='/dev/ttyACM0', # '/dev/ttyUSB0'
-        help='Porta serial (default: /dev/ttyUSB0)'
+        default='/dev/ttyACM0',
+        help='Porta serial (default: /dev/ttyACM0)'
     )
     parser.add_argument(
         '--baudrate', '-b',
@@ -394,10 +411,6 @@ def main():
         if args.mode == 'console':
             receiver.run_console_mode()
         elif args.mode == 'plot':
-            receiver.run_plot_mode()
-        
-        # Salvar dados se solicitado
-        if args.output:
             receiver.save_to_csv(args.output)
     
     finally:
