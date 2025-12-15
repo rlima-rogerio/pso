@@ -1,5 +1,5 @@
 /*******************************************************************************
- * FILENAME:    pso_iv.c (CORRETO - COM INA169)
+ * FILENAME:    pso_iv.c (Based on INA169)
  *
  * DESCRIPTION:
  *       Voltage and current scaling implementation.

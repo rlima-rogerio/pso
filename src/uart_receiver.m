@@ -1,5 +1,4 @@
-% ==================================================================
-% PSO Data Acquisition - MATLAB Receiver
+% PSO Data Acquisition - MATLAB Receiver (VERSÃO FINAL CORRIGIDA)
 % ==================================================================
 
 clear all;
@@ -7,7 +6,19 @@ close all;
 clc;
 
 %% Configurações
-PORT = '/dev/ttyACM0';      % Windows: 'COM3', Linux: '/dev/ttyACM0'
+sys = computer;
+
+switch sys
+    case {'PCWIN64', 'PCWIN'}
+        PORT = 'COM3';
+        
+    case {'GLNXA64', 'GLNX86'}
+        PORT = '/dev/ttyACM0';
+        
+    otherwise
+        error('Sistema operacional não suportado: %s', sys);
+end
+
 BAUDRATE = 115200;
 OUTPUT_MAT = 'daq.mat';
 OUTPUT_TXT = 'daq.txt';
@@ -137,10 +148,10 @@ try
                 rpm = uint16(packet_data(11)) * 256 + uint16(packet_data(12));
                 
                 % Current (bytes 12-13, signed, em mA)
-                current_raw = double(int16(uint16(packet_data(13)) * 256 + uint16(packet_data(14))));
+                current_raw = double(uint16(uint16(packet_data(13)) * 256 + uint16(packet_data(14))));
                 
                 % Voltage (bytes 14-15, signed, em mV)
-                voltage_raw = double(int16(uint16(packet_data(15)) * 256 + uint16(packet_data(16))));
+                voltage_raw = double(uint16(uint16(packet_data(15)) * 256 + uint16(packet_data(16))));
                 
                 % Thrust (bytes 16-17, signed, em cN)
                 thrust_raw = double(int16(uint16(packet_data(17)) * 256 + uint16(packet_data(18))));
