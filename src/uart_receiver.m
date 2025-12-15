@@ -181,10 +181,10 @@ try
                 rpm = uint16(packet_data(11)) * 256 + uint16(packet_data(12));
                 
                 % Current (bytes 12-13, signed, em mA)
-                current_raw = double(int16(uint16(packet_data(13)) * 256 + uint16(packet_data(14))));
+                current_raw = double(uint16(uint16(packet_data(13)) * 256 + uint16(packet_data(14))));
                 
                 % Voltage (bytes 14-15, signed, em mV)
-                voltage_raw = double(int16(uint16(packet_data(15)) * 256 + uint16(packet_data(16))));
+                voltage_raw = double(uint16(uint16(packet_data(15)) * 256 + uint16(packet_data(16))));
                 
                 % Thrust (bytes 16-17, signed, em cN)
                 thrust_raw = double(int16(uint16(packet_data(17)) * 256 + uint16(packet_data(18))));
