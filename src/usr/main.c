@@ -369,6 +369,8 @@ static sys_state_t state_init(void)
     enable_data_capture = 1U;
     streaming_active = 1U;
     
+    // rpm_reset();
+
     /* Configure default PWM profile */
 #if defined(PWM_PROFILE_TRAPEZOID_SELECTED)
     current_profile = PWM_PROFILE_TRAPEZOID;            // Default trapezoidal profile
@@ -479,16 +481,21 @@ static sys_state_t state_processing(void)
 {
     uint32_t current_rpm;
     uint32_t edge_interval_us;
+    // uint32_t raw_rpm;
     
+#ifdef RPM_EDGE_PERIOD_METHOD
     /* Get RPM directly from ISR calculation (period-based) */
-    current_rpm = rpm_get_value();
-    
+        current_rpm = rpm_get_value();    
     /* Optional: Apply moving average filter */
     rpm_update_filter(current_rpm);
     g_scaled_rpm = rpm_get_filtered();
-    
-    /* Debug information */
-    edge_interval_us = rpm_get_edge_interval_us();
+#else /* RPM_EDGE_COUNT_METHOD */
+/* Get raw RPM count and calculate scaled RPM */
+    // raw_rpm = rpm_get_raw_count();
+
+    g_scaled_rpm = rpm_calculate(g_pulse_diff, RPM_CALC_PERIOD_MS, BLADE_NUMBER);
+    // g_scaled_rpm = current_rpm;
+#endif
     
     /* ... rest of existing code ... */
     packet_data(&dp);
@@ -527,7 +534,7 @@ static sys_state_t state_streaming(void)
         stream_packet_count++;                  // Increment packet counter
         
         /* Toggle debug pin to indicate streaming activity */
-        DEBUG_ADC_TOGGLE();                     /* PD6 - ADC debug pin */
+        // DEBUG_ADC_TOGGLE();                     /* PD6 - ADC debug pin */
     }
 
     /* Check if SW2 (PF0) is pressed for manual stop */

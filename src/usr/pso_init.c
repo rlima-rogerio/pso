@@ -556,9 +556,14 @@ void pso_rpm_config(void)
     /* Configure as 32-bit wide timer */
     WTIMER1_CFG_R = 0x00000004;                     /* 32-bit wide timer (mesmo da versão funcional) */
     
+#ifdef RPM_EDGE_PERIOD_METHOD
     /* CORREÇÃO CRÍTICA: Configurar modo CAPTURE com TACDIR */
-    // WTIMER1_TAMR_R = TIMER_TAMR_TAMR_CAP | TIMER_TAMR_TACDIR; /* Capture mode, count up */
     WTIMER1_TAMR_R = TIMER_TAMR_TAMR_CAP | TIMER_TAMR_TACMR | TIMER_TAMR_TACDIR;
+#else /* RPM_EDGE_COUNT_METHOD */
+    /* Configure in EDGE-COUNT mode, count up */
+    WTIMER1_TAMR_R = TIMER_TAMR_TAMR_CAP | TIMER_TAMR_TACMR;
+    WTIMER1_TAMR_R = TIMER_TAMR_TAMR_CAP | TIMER_TAMR_TACMR | TIMER_TAMR_TACDIR; 
+#endif
 
     
     /* Configure to capture on RISING edges */
@@ -575,17 +580,26 @@ void pso_rpm_config(void)
     /* WTIMER1_CTL_R |= TIMER_CTL_TAOTE; */         /* Não necessário */
     /* WTIMER1_CTL_R |= TIMER_CTL_TAPWML; */        /* Não necessário */
     
+    /* Clear capture event interrupt */
+    WTIMER1_ICR_R = TIMER_ICR_CAECINT;                  
+
+#ifdef RPM_EDGE_PERIOD_METHOD   
     /* Enable capture interrupt */
     WTIMER1_IMR_R |= TIMER_IMR_CAEIM;               /* Enable capture event interrupt */
+#else /* RPM_EDGE_COUNT_METHOD */
+    /* Disable capture interrupt - using Timer3A for reading */
+    WTIMER1_IMR_R = 0;//&= ~TIMER_IMR_CAEIM;              /* Disable capture event interrupt */
+#endif
     
-    /* Clear any pending interrupts */
-    WTIMER1_ICR_R = TIMER_ICR_CAECINT;
-
     /* Enable Wide Timer1A */
     WTIMER1_CTL_R |= TIMER_CTL_TAEN;
     
-    /* Habilitar no NVIC - WTimer1A é IRQ 96 */
-    NVIC_EN3_R |= (1 << 0);  // Habilita IRQ 96 (WTimer1A)
+#ifdef RPM_EDGE_PERIOD_METHOD
+    /* Enable NVIC - WTimer1A is on IRQ 96 */
+    NVIC_EN3_R |= (1 << 0);  // Only in the period method!
+#else
+    /* NVIC remains disabled in edge count method */
+#endif
 
     /**************************************************************************
      * DEBUG: Configure test pins for verification
