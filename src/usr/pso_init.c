@@ -561,8 +561,7 @@ void pso_rpm_config(void)
     WTIMER1_TAMR_R = TIMER_TAMR_TAMR_CAP | TIMER_TAMR_TACMR | TIMER_TAMR_TACDIR;
 #else /* RPM_EDGE_COUNT_METHOD */
     /* Configure in EDGE-COUNT mode, count up */
-    WTIMER1_TAMR_R = TIMER_TAMR_TAMR_CAP | TIMER_TAMR_TACMR;
-    WTIMER1_TAMR_R = TIMER_TAMR_TAMR_CAP | TIMER_TAMR_TACMR | TIMER_TAMR_TACDIR; 
+    WTIMER1_TAMR_R = TIMER_TAMR_TAMR_CAP | TIMER_TAMR_TACDIR; 
 #endif
 
     
@@ -575,10 +574,6 @@ void pso_rpm_config(void)
 
     /* No prescaler - maximum resolution */
     WTIMER1_TAPR_R = 0;
-    
-    /* REMOVER estas linhas (não são necessárias para capture mode) */
-    /* WTIMER1_CTL_R |= TIMER_CTL_TAOTE; */         /* Não necessário */
-    /* WTIMER1_CTL_R |= TIMER_CTL_TAPWML; */        /* Não necessário */
     
     /* Clear capture event interrupt */
     WTIMER1_ICR_R = TIMER_ICR_CAECINT;                  

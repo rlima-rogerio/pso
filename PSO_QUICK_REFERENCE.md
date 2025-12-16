@@ -5,7 +5,7 @@
 
 ---
 
-## 📌 Pin Assignments
+## Pin Assignments
 
 ### ADC Inputs (0-3.3V)
 ```
@@ -13,8 +13,8 @@ PD1 (AIN6)  →  Acceleration X-axis (raw ADC)
 PD2 (AIN5)  →  Acceleration Y-axis (raw ADC)
 PD3 (AIN4)  →  Acceleration Z-axis (raw ADC)
 PD0 (AIN7)  →  Thrust sensor (raw ADC)
-PE1 (AIN2)  →  Motor Voltage (scaled to mV) ⭐
-PE2 (AIN1)  →  Motor Current (scaled to mA) ⭐
+PE1 (AIN2)  →  Motor Voltage (scaled to mV)
+PE2 (AIN1)  →  Motor Current (scaled to mA)
 ```
 
 ### Digital I/O
@@ -48,7 +48,7 @@ PD7  →  State machine indicator
 
 ---
 
-## ⚙️ System Parameters
+## System Parameters
 
 ### Timing Configuration
 | Parameter | Value | Notes |
@@ -72,7 +72,7 @@ PD7  →  State machine indicator
 | Resolution @ 1000 RPM | ~0.001 RPM (theoretical) |
 | ISR Latency | 5-8 μs |
 
-### Voltage/Current Measurement ⭐ NEW v2.0
+### Voltage/Current Measurement
 | Parameter | Range | Resolution | Units |
 |-----------|-------|------------|-------|
 | Voltage | 0 - 33.4V | 8.16 mV/step | **mV** (transmitted) |
@@ -102,7 +102,7 @@ ADC Buffers:    24 bytes (6ch × 2B × 2 ADCs)
 
 ---
 
-## 🔧 Configuration Macros
+## Configuration Macros
 
 ### pso_rpm.h (Edge-Period Configuration)
 ```c
@@ -111,9 +111,12 @@ ADC Buffers:    24 bytes (6ch × 2B × 2 ADCs)
 #define MIN_EDGE_INTERVAL_US    100U    // Min period = noise filter
 #define MAX_EDGE_INTERVAL_MS    60000U  // Max period (60 seconds)
 #define RPM_FILTER_SAMPLES      4U      // Moving average size
+/* Select measurement method  */
+#define RPM_EDGE_COUNT_METHOD           // Edge counting (default) */
+// #define RPM_EDGE_PERIOD_METHOD          // Period measurement */
 ```
 
-### pso_iv.h (Voltage/Current Scaling) ⭐ NEW
+### pso_iv.h (Voltage/Current Scaling) 
 ```c
 /* Voltage Divider */
 #define R3_OHM                  1500U   // Upper resistor: 1.5kΩ
@@ -149,7 +152,7 @@ ADC Buffers:    24 bytes (6ch × 2B × 2 ADCs)
 
 ---
 
-## 📦 Data Packet Format
+## Data Packet Format
 
 ### UART Packet Structure (21 bytes)
 ```
@@ -171,7 +174,7 @@ Total: 21 bytes
 Byte order: Little-endian (LSB first)
 ```
 
-### Field Details ⭐ UPDATED v2.0
+### Field Details (UPDATED)
 ```c
 typedef struct {
     uint16_t index;      // Packet counter (0-65535)
@@ -185,13 +188,13 @@ typedef struct {
 ```
 
 **Key Changes in v2.0**:
-- ✅ `v_motor`: Now in **millivolts** (was raw ADC)
-- ✅ `i_motor`: Now in **milliamps** (was raw ADC)
-- ✅ `accel[3]` and `thrust`: Still **raw ADC** (sensor-specific)
+- `v_motor`: Now in **millivolts** (was raw ADC)
+- `i_motor`: Now in **milliamps** (was raw ADC)
+- `accel[3]` and `thrust`: Still **raw ADC** (sensor-specific)
 
 ---
 
-## 🔄 State Machine
+## State Machine
 
 ### System States
 ```
@@ -335,7 +338,7 @@ float rpm_to_frequency(uint16_t rpm);
 
 ---
 
-## 🔌 Voltage/Current API ⭐ NEW v2.0
+## 🔌 Voltage/Current API (NEW v2.0)
 
 ### pso_iv.h Functions
 ```c
@@ -387,7 +390,7 @@ P_motor = V_battery * I_motor;    % Watts
 
 ---
 
-## 🎛️ PWM Profiles
+## PWM Profiles
 
 ### Trapezoid Profile
 ```c
@@ -462,7 +465,7 @@ void ADC0SS1IntHandler(void)
 
 ---
 
-## 📐 Formula Reference
+## Formula Reference
 
 ### RPM Calculation
 ```
@@ -513,7 +516,7 @@ Power:
 
 ---
 
-## 💡 LED Patterns
+## LED Patterns
 
 | LED Color | Pattern | State | Trigger |
 |-----------|---------|-------|---------|
@@ -525,7 +528,7 @@ Power:
 
 ---
 
-## ⚡ Interrupt Priority Table
+## Interrupt Priority Table
 
 | Priority | Interrupt | Handler | Frequency | Purpose |
 |----------|-----------|---------|-----------|---------|
@@ -539,7 +542,7 @@ Power:
 
 ---
 
-## ⏱️ Timing Measurements
+## Timing Measurements
 
 | Operation | Duration | CPU Load @ 5kHz | Notes |
 |-----------|----------|-----------------|-------|
@@ -555,7 +558,7 @@ Power:
 
 ---
 
-## 🔨 Build & Flash Commands
+## Build & Flash Commands
 
 ### Code Composer Studio (GUI)
 ```
@@ -628,7 +631,7 @@ $port.Open()
 
 ---
 
-## 📁 Key Files
+## Key Files
 
 ### Core Application
 ```
@@ -701,7 +704,7 @@ pso_config.h    - System-wide configuration constants
 
 ---
 
-## 📊 Test Commands
+## Test Commands
 
 ### RPM Test (Function Generator)
 ```
