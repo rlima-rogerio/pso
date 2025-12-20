@@ -56,9 +56,9 @@
  ******************************************************************************/
 // #define PWM_PROFILE_NONE_SELECTED            /* NOT TESTED */
 
-#define PWM_PROFILE_TRAPEZOID_SELECTED       /* IMPLEMENTED */
-//  #define PWM_PROFILE_LINEAR_SELECTED          /* IMPLEMENTED */
-//#define PWM_PROFILE_STEP_SELECTED            /* IMPLEMENTED */
+// #define PWM_PROFILE_TRAPEZOID_SELECTED       /* IMPLEMENTED */
+#define PWM_PROFILE_LINEAR_SELECTED          /* IMPLEMENTED */
+// #define PWM_PROFILE_STEP_SELECTED            /* IMPLEMENTED */
 
 // #define PWM_PROFILE_CUSTOM_SELECTED          /* NOT IMPLEMENTED */
 // #define PWM_PROFILE_SINE_SELECTED            /* NOT IMPLEMENTED */
@@ -143,7 +143,7 @@ int main(void)
 #ifdef PWM_PROFILE_LINEAR_SELECTED
     /* Configure custom linear profile */
     linear_config = (linear_config_t){
-        .duration_ms = 10000,      /* Total profile duration in ms */
+        .duration_ms = 6000,      /* Total profile duration in ms */
         .start_value = 0,      /* Start PWM value (0-100%) */
         .end_value = 70,        /* End PWM value (0-100%) */
         .cycles = 1,           /* Number of cycles to repeat */

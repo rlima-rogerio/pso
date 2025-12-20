@@ -1,4 +1,4 @@
-% PSO Data Acquisition - MATLAB Receiver (VERSÃO FINAL CORRIGIDA)
+% PSO Data Acquisition - MATLAB Receiver
 % ==================================================================
 
 clear all;
@@ -19,9 +19,23 @@ switch sys
         error('Sistema operacional não suportado: %s', sys);
 end
 
+%% CALIBRATION
+CALIBRATION_MODE = true;
+calibration_mass = 0 + 61.2 + 245.4 + 243.0 +244.0 + 246.1 + 245.4 + 246.0 + 243.3 + 245.7 + 245.1 + 243.9 + 245.1 + 245.4 + 245.4 +244.6 + 244.6 + 245.4 + 276.1 + 245.1 + 245.0 + 242.5 + 245.9 ...
+                 - 245.0 - 245.9 - 245.1 - 242.5 - 244.6 - 276.1 - 244.6 - 245.4 - 245.4 - 245.4 - 243.3 - 245.1 - 245.1 - 243.9 - 246.0 - 245.4 - 244.0 - 245.7 - 245.4 - 246.1 - 243.0 - 61.6; % [g]
+dir = 'down'; % up or down
+
+if CALIBRATION_MODE
+    cd ../calibration_data;
+    filename = sprintf("calibration_%s_%dg", dir, round(calibration_mass));
+    OUTPUT_MAT = sprintf("%s.mat", filename);
+    OUTPUT_TXT = sprintf("%s.txt", filename);
+else
+    OUTPUT_MAT = 'daq.mat';
+    OUTPUT_TXT = 'daq.txt';
+end
+
 BAUDRATE = 115200;
-OUTPUT_MAT = 'daq.mat';
-OUTPUT_TXT = 'daq.txt';
 
 % Constantes do protocolo
 STX = hex2dec('FE');
@@ -162,7 +176,7 @@ try
                 % Converter para unidades reais
                 current = current_raw / 1000.0;
                 voltage = voltage_raw / 1000.0;
-                thrust = thrust_raw / 100.0;
+                thrust = thrust_raw;% / 100.0;
                 power = voltage * current;
                 
                 % Armazenar dados
@@ -283,6 +297,12 @@ end
 fclose(fid);
 fprintf('Arquivo .txt salvo!\n');
 
+% Save .MAT file with only output strain gauge sampled data and probe mass.
+data_thrust = data.thrust;
+save(sprintf("%s_reduced.mat",filename), 'data_thrust', 'calibration_mass');
+
+
+
 %% Plotar gráficos
 fprintf('\nGerando gráficos...\n');
 
@@ -374,6 +394,10 @@ fprintf('Empuxo:   min=%-6.2f  max=%-6.2f  média=%-7.2f N\n', ...
         min(data.thrust), max(data.thrust), mean(data.thrust));
 fprintf('Potência: min=%-6.2f  max=%-6.2f  média=%-7.2f W\n', ...
         min(data.power), max(data.power), mean(data.power));
+
+if CALIBRATION_MODE
+    cd ../src;
+end
 
 fprintf('\n=== Processo concluído ===\n');
 
