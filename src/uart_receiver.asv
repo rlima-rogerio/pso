@@ -297,10 +297,11 @@ end
 fclose(fid);
 fprintf('Arquivo .txt salvo!\n');
 
-% Save .MAT file with only output strain gauge sampled data and probe mass.
-data_thrust = data.thrust;
-save(sprintf("%s_reduced.mat",filename), 'data_thrust', 'calibration_mass');
-
+if CALIBRATION_MODE
+    % Save .MAT file with only output strain gauge sampled data and probe mass.
+    data_thrust = data.thrust;
+    save(sprintf("%s_reduced.mat",filename), 'data_thrust', 'calibration_mass');
+end
 
 
 %% Plotar gráficos

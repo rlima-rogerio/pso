@@ -297,10 +297,11 @@ end
 fclose(fid);
 fprintf('Arquivo .txt salvo!\n');
 
-% Save .MAT file with only output strain gauge sampled data and probe mass.
-data_thrust = data.thrust;
-save(sprintf("%s_reduced.mat",filename), 'data_thrust', 'calibration_mass');
-
+if CALIBRATION_MODE
+    % Save .MAT file with only output strain gauge sampled data and probe mass.
+    data_thrust = data.thrust;
+    save(sprintf("%s_reduced.mat",filename), 'data_thrust', 'calibration_mass');
+end
 
 
 %% Plotar gráficos
@@ -347,7 +348,7 @@ subplot(3, 2, 5);
 plot(data.time, data.thrust, 'm-', 'LineWidth', 1.5);
 grid on;
 xlabel('Tempo (s)');
-ylabel('Empuxo (N)');
+ylabel('Empuxo (g.f)');
 title('Força de Empuxo');
 
 % Subplot 6: Potência

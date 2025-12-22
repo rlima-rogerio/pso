@@ -230,7 +230,9 @@ uint8_t packet_data(ulink_pso_data_t* dp)
     dp->i_motor = current_adc_to_ma(adc1_buffer[2]);
     
 		/* Thrust in millinewtons */
-    dp->thrust = thrust_adc_to_mn(adc0_buffer[1]);
+//    dp->thrust = (uint16_t)adc0_buffer[1];
+    dp->thrust = thrust_adc_to_mn_int(adc0_buffer[1]);
+//    dp->thrust = thrust_adc_to_mn(adc0_buffer[1]);
 
     /* Throttle */
     dp->throttle = g_pwm_value;

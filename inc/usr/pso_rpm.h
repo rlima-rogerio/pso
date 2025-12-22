@@ -25,8 +25,8 @@
  ******************************************************************************/
 
 /* Select measurement method (define ONE in pso_config.h) */
-#define RPM_EDGE_COUNT_METHOD  /* Edge counting (default) */
-// #define RPM_EDGE_PERIOD_METHOD /* Period measurement */
+//#define RPM_EDGE_COUNT_METHOD  /* Edge counting (default) */
+#define RPM_EDGE_PERIOD_METHOD /* Period measurement */
 
 
 

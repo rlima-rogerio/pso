@@ -56,8 +56,8 @@
  ******************************************************************************/
 // #define PWM_PROFILE_NONE_SELECTED            /* NOT TESTED */
 
-// #define PWM_PROFILE_TRAPEZOID_SELECTED       /* IMPLEMENTED */
-#define PWM_PROFILE_LINEAR_SELECTED          /* IMPLEMENTED */
+ #define PWM_PROFILE_TRAPEZOID_SELECTED       /* IMPLEMENTED */
+//#define PWM_PROFILE_LINEAR_SELECTED          /* IMPLEMENTED */
 // #define PWM_PROFILE_STEP_SELECTED            /* IMPLEMENTED */
 
 // #define PWM_PROFILE_CUSTOM_SELECTED          /* NOT IMPLEMENTED */
@@ -143,9 +143,9 @@ int main(void)
 #ifdef PWM_PROFILE_LINEAR_SELECTED
     /* Configure custom linear profile */
     linear_config = (linear_config_t){
-        .duration_ms = 10000,      /* Total profile duration in ms */
+        .duration_ms = 5000,      /* Total profile duration in ms */
         .start_value = 0,      /* Start PWM value (0-100%) */
-        .end_value = 70,        /* End PWM value (0-100%) */
+        .end_value = 60,        /* End PWM value (0-100%) */
         .cycles = 1,           /* Number of cycles to repeat */
         .bidirectional = 0,    /* Ramp up then down if true */
         .slew_rate = 0.01        /* Rate of change (%/ms) - if non-zero overrides duration */
@@ -167,7 +167,7 @@ int main(void)
         .hold_ms = 10000,                       // 10 seconds hold at maximum
         .ramp_down_ms = 5000,                   // 5 seconds ramp down
         .min_value = 0,                         // Minimum 0% duty cycle
-        .max_value = 60,                       // Maximum 100% duty cycle
+        .max_value = 65,                       // Maximum 100% duty cycle
         .cycles = 2,                            // Repeat 2 times
         .auto_repeat = false                    // No auto-repeat
     };

@@ -75,7 +75,7 @@ class PSOPacket:
         [10-11]  RPM (uint16, big-endian)
         [12-13]  Current (uint16, big-endian, SCALED 0-65535) ← MUDOU!
         [14-15]  Voltage (uint16, big-endian, em mV)         ← MUDOU!
-        [16-17]  Thrust (int16, big-endian, em cN)
+        [16-17]  Thrust (uint16, big-endian, em mN)
         [18]     Throttle (uint8, 0-100%)
         [19-20]  Checksum (uint16, big-endian)
         """
@@ -98,7 +98,7 @@ class PSOPacket:
             # ================================================================
             
             (self.index, self.accel_x, self.accel_y, self.accel_z,
-             self.rpm, current_scaled, voltage_mv, thrust_raw, self.throttle) = \
+             self.rpm, current_ma, voltage_mv, thrust_gf, self.throttle) = \
                 struct.unpack('>HhhhHHHHB', data[2:19])
             
             # ================================================================
@@ -109,11 +109,11 @@ class PSOPacket:
             self.voltage = voltage_mv / 1000.0
             
             # Current: SCALED → A (precisa fator de escala)
-            self.current = current_scaled * CURRENT_SCALE_FACTOR
+            self.current = current_ma / 1000.0 
             # Ou equivalente: self.current = (current_scaled * 6600.0) / 65535.0
             
             # Thrust (sem mudança)
-            self.thrust = thrust_raw  # / 100.0 se for em cN
+            self.thrust = thrust_gf / 1000.0  # / kgf
             
             # ================================================================
             
@@ -349,11 +349,20 @@ class PSOReceiver:
     
     def save_to_csv(self, filename):
         """Salvar dados em arquivo CSV"""
+        if filename is None:
+            print("Erro: nome do arquivo não especificado (use --output)")
+            return False
+        
+        if len(self.time_buffer) == 0:
+            print("Erro: nenhum dado para salvar")
+            return False
+        
         print(f"\nSalvando dados em {filename}...")
         
-        with open(filename, 'w') as f:
-            # Cabeçalho
-            f.write("Time,Index,RPM,Throttle,Current_A,Voltage_V,Thrust,Power_kW\n")
+        try:
+            with open(filename, 'w') as f:
+                # Cabeçalho
+                f.write("Time,Index,RPM,Throttle,Current_A,Voltage_V,Thrust,Power_kW\n")
             
             # Dados
             for i in range(len(self.time_buffer)):
@@ -367,7 +376,12 @@ class PSOReceiver:
                        f"{self.thrust_buffer[i]:.2f},"
                        f"{power_kw:.3f}\n")
         
-        print(f"Dados salvos: {len(self.time_buffer)} amostras")
+            print(f"Dados salvos: {len(self.time_buffer)} amostras")
+            return True
+            
+        except IOError as e:
+            print(f"Erro ao salvar arquivo: {e}")
+            return False
 
 
 def main():
@@ -411,6 +425,10 @@ def main():
         if args.mode == 'console':
             receiver.run_console_mode()
         elif args.mode == 'plot':
+            receiver.run_plot_mode()
+        
+        # Salvar CSV se especificado (após coleta de dados)
+        if args.output and len(receiver.time_buffer) > 0:
             receiver.save_to_csv(args.output)
     
     finally:
