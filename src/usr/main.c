@@ -143,7 +143,7 @@ int main(void)
 #ifdef PWM_PROFILE_LINEAR_SELECTED
     /* Configure custom linear profile */
     linear_config = (linear_config_t){
-        .duration_ms = 6000,      /* Total profile duration in ms */
+        .duration_ms = 10000,      /* Total profile duration in ms */
         .start_value = 0,      /* Start PWM value (0-100%) */
         .end_value = 70,        /* End PWM value (0-100%) */
         .cycles = 1,           /* Number of cycles to repeat */

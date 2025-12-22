@@ -6,6 +6,7 @@
 #include "checksum.h"
 #include "pso_rpm.h"
 #include "pso_iv.h"
+#include "pso_thrust.h"
 
 uint16_t uart_rx_buffer[ULINK_MAX_PACKET_LEN];
 uint16_t uart_tx_buffer[ULINK_MAX_PACKET_LEN];
@@ -228,8 +229,10 @@ uint8_t packet_data(ulink_pso_data_t* dp)
     /* CURRENT in milliamps */
     dp->i_motor = current_adc_to_ma(adc1_buffer[2]);
     
-    /* Thrust and throttle */
-    dp->thrust = adc0_buffer[1];
+		/* Thrust in millinewtons */
+    dp->thrust = thrust_adc_to_mn(adc0_buffer[1]);
+
+    /* Throttle */
     dp->throttle = g_pwm_value;
     
     return returnval;

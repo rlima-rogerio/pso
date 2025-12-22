@@ -99,7 +99,7 @@ class PSOPacket:
             
             (self.index, self.accel_x, self.accel_y, self.accel_z,
              self.rpm, current_scaled, voltage_mv, thrust_raw, self.throttle) = \
-                struct.unpack('>HhhhHHHhB', data[2:19])
+                struct.unpack('>HhhhHHHHB', data[2:19])
             
             # ================================================================
             # CONVERSÃO OTIMIZADA
