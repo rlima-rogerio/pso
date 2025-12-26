@@ -132,7 +132,7 @@ $RECYCLE.BIN/
 # Compressed Files (unless needed for distribution)
 #######################################################################################
 
-*.zip
+#*.zip
 *.tar
 *.tar.gz
 *.rar
@@ -170,7 +170,7 @@ latex/
 doxygen_warnings.txt
 
 # PDF generated from LaTeX
-*.pdf
+#*.pdf
 *.aux
 *.out
 *.toc
