@@ -227,7 +227,9 @@ uint8_t packet_data(ulink_pso_data_t* dp)
     dp->v_motor = voltage_adc_to_mv(adc0_buffer[2]);
     
     /* CURRENT in milliamps */
-    dp->i_motor = current_adc_to_ma(adc1_buffer[2]);
+     dp->i_motor = current_adc_to_ma(adc1_buffer[2]);
+//		dp->i_motor = (uint16_t)(adc1_buffer[2]);
+		
     
 		/* Thrust in millinewtons */
 //    dp->thrust = (uint16_t)adc0_buffer[1];

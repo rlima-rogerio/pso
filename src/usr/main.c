@@ -162,12 +162,12 @@ int main(void)
 #elif defined(PWM_PROFILE_TRAPEZOID_SELECTED)
     /* Configure custom trapezoidal profile */
     trapezoid_config = (trapezoid_config_t){
-        .duration_ms = 20000,                   // 20 seconds total duration
+        .duration_ms = 15000,                   // 20 seconds total duration
         .ramp_up_ms = 5000,                     // 5 seconds ramp up
-        .hold_ms = 10000,                       // 10 seconds hold at maximum
+        .hold_ms = 5000,                       // 10 seconds hold at maximum
         .ramp_down_ms = 5000,                   // 5 seconds ramp down
         .min_value = 0,                         // Minimum 0% duty cycle
-        .max_value = 65,                       // Maximum 100% duty cycle
+        .max_value = 60,                       // Maximum 100% duty cycle
         .cycles = 2,                            // Repeat 2 times
         .auto_repeat = false                    // No auto-repeat
     };

@@ -39,8 +39,9 @@
 #include "rom.h"
 #include "interrupt.h"
 #include "timer.h"
-#include "pso_init.h"
 #include "uart.h"
+#include "pso_init.h"
+#include "pso_rpm.h"
 
 
 /*******************************************************************************
