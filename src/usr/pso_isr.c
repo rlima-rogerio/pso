@@ -98,6 +98,9 @@ extern uint32_t g_last_edge_time_us;         /* Time of last edge in μs */
 extern uint32_t g_last_capture_value;        /* Last timer capture value */
 extern uint32_t g_edge_valid_count;          /* Valid edges counter */
 extern uint32_t g_edge_timeout_counter;      /* Timeout for stopped motor */
+uint32_t g_period_us; // Debugging variable
+uint32_t g_period_ticks; // Debugging variable
+
 
 #endif /* RPM_EDGE_COUNT_METHOD / RPM_EDGE_PERIOD_METHOD */
 
@@ -335,6 +338,7 @@ void WTimer1AIntHandler(void)
     uint32_t current_capture;
     uint32_t period_ticks;
     uint32_t period_us;
+    static uint32_t last_capture = 0;
     
     /* 1. Get current timer capture value (32-bit, free-running) */
     current_capture = WTIMER1_TAR_R;
@@ -357,6 +361,9 @@ void WTimer1AIntHandler(void)
         /* 40 MHz clock = 25 ns/tick = 40 ticks/μs */
         /* Add 20 for rounding: (ticks + 20) / 40 */
         period_us = (period_ticks + 20) / 40;
+        /* DEBUGGING */
+        g_period_us = period_us; // Debugging variable
+        g_period_ticks = period_ticks; // Debugging variable
         
         /* 4. Validate period (filter noise and invalid readings) */
         if (period_us >= MIN_EDGE_INTERVAL_US && 
@@ -369,7 +376,7 @@ void WTimer1AIntHandler(void)
             
             /* 5. Calculate RPM directly */
             /* RPM = 60,000,000 / (period_μs × BLADE_NUMBER) */
-            if (period_us > 0)
+            if (period_us > 0) //(period_us > 0)
             {
                 g_rpm_value = 60000000UL / (period_us * BLADE_NUMBER);
                 
@@ -381,12 +388,13 @@ void WTimer1AIntHandler(void)
             }
         }
     }
-    
     /* 7. Update last capture value for next edge */
     g_last_capture_value = current_capture;
     
     /* 8. Clear interrupt flag */
     WTIMER1_ICR_R = TIMER_ICR_CAECINT;
+
+    DEBUG_ADC_TOGGLE();                     /* PD6 - ADC debug pin */
 }
 
 /*******************************************************************************

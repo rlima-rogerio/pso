@@ -56,9 +56,10 @@
  ******************************************************************************/
 // #define PWM_PROFILE_NONE_SELECTED            /* NOT TESTED */
 
- #define PWM_PROFILE_TRAPEZOID_SELECTED       /* IMPLEMENTED */
+//  #define PWM_PROFILE_TRAPEZOID_SELECTED       /* IMPLEMENTED */
 //#define PWM_PROFILE_LINEAR_SELECTED          /* IMPLEMENTED */
-// #define PWM_PROFILE_STEP_SELECTED            /* IMPLEMENTED */
+#define PWM_PROFILE_SINGLE_STEP_SELECTED    /* IMPLEMENTED */
+// #define PWM_PROFILE_MULTI_STEP_SELECTED     /* IMPLEMENTED */
 
 // #define PWM_PROFILE_CUSTOM_SELECTED          /* NOT IMPLEMENTED */
 // #define PWM_PROFILE_SINE_SELECTED            /* NOT IMPLEMENTED */
@@ -150,12 +151,21 @@ int main(void)
         .bidirectional = 0,    /* Ramp up then down if true */
         .slew_rate = 0.01        /* Rate of change (%/ms) - if non-zero overrides duration */
     };
-#elif defined(PWM_PROFILE_STEP_SELECTED)
+#elif defined(PWM_PROFILE_MULTI_STEP_SELECTED)
     /* Configure custom step profile */
     step_config = (step_config_t){
         .step_interval_ms = 5000, /* Time between step changes (5 seconds) */
         .num_steps = 9,           /* Number of steps in the sequence */
         .steps = {0, 25, 0, 50, 0, 75, 0, 100, 0}, /* Step values (0-100%) */
+        .cycles = 1,              /* Number of cycles to repeat */
+        .ping_pong = false        /* Ping-pong (forward then reverse) if true */
+    };
+#elif defined(PWM_PROFILE_SINGLE_STEP_SELECTED)
+    /* Configure custom step profile */
+    step_config = (step_config_t){
+        .step_interval_ms = 3000, /* Time between step changes (5 seconds) */
+        .num_steps = 3,           /* Number of steps in the sequence */
+        .steps = {0, 60, 0},      /* Step values (0-100%) */
         .cycles = 1,              /* Number of cycles to repeat */
         .ping_pong = false        /* Ping-pong (forward then reverse) if true */
     };
@@ -378,7 +388,10 @@ static sys_state_t state_init(void)
 #elif defined(PWM_PROFILE_LINEAR_SELECTED)
     current_profile = PWM_PROFILE_LINEAR;               // Default linear profile   
     pwm_set_linear_config(&linear_config);      // Configure active linear profile
-#elif defined(PWM_PROFILE_STEP_SELECTED)
+#elif defined(PWM_PROFILE_SINGLE_STEP_SELECTED)
+    current_profile = PWM_PROFILE_STEP;             // Default trapezoidal profile
+    pwm_set_step_config(&step_config);       // Configure active step profile
+#elif defined(PWM_PROFILE_MULTI_STEP_SELECTED)
     current_profile = PWM_PROFILE_STEP;             // Default trapezoidal profile
     pwm_set_step_config(&step_config);       // Configure active step profile
 #else

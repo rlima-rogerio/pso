@@ -17,6 +17,8 @@ extern volatile uint32_t adc1_buffer[3];      /* Ay -  Az - I_m */
 
 extern uint8_t g_pwm_value;
 extern uint32_t g_scaled_rpm;
+extern uint32_t g_period_us; // Debugging variable
+extern uint32_t g_period_ticks; // Debugging variable
 
 ulink_pso_command_t command;
 
@@ -221,7 +223,10 @@ uint8_t packet_data(ulink_pso_data_t* dp)
     dp->accel[2] = adc1_buffer[1];
     
     /* RPM */
-    dp->rpm = g_scaled_rpm;
+    // dp->rpm = g_scaled_rpm;
+		dp->rpm = (uint16_t)g_period_us; // Debugging variable		
+		// dp->rpm = (uint16_t)g_period_ticks; // Debugging variable		
+
     
     /* VOLTAGE in millivolts */
     dp->v_motor = voltage_adc_to_mv(adc0_buffer[2]);

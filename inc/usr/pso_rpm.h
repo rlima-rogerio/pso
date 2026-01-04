@@ -25,8 +25,8 @@
  ******************************************************************************/
 
 /* Select measurement method (define ONE in pso_config.h) */
-#define RPM_EDGE_COUNT_METHOD  /* Edge counting (default) */
-//#define RPM_EDGE_PERIOD_METHOD /* Period measurement */
+// #define RPM_EDGE_COUNT_METHOD  /* Edge counting (default) */
+#define RPM_EDGE_PERIOD_METHOD /* Period measurement */
 
 
 
@@ -64,8 +64,8 @@
  *---------------------------------------------------------------------------*/
 
 /* Period validation */
-#define MIN_EDGE_INTERVAL_US    100U     /* Min valid period (100 μs) */
-#define MAX_EDGE_INTERVAL_MS    60000U   /* Max valid period (60 s) */
+#define MIN_EDGE_INTERVAL_US    3000U     /* Min valid period (000 μs) */
+#define MAX_EDGE_INTERVAL_MS    2000U //60000U   /* Max valid period (60 s) */
 
 /* Timeout for stopped motor detection */
 #define RPM_STOP_TIMEOUT_MS     2000U    /* Motor stopped if no edge for 2s */
