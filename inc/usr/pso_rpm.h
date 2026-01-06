@@ -47,6 +47,10 @@
 /* Blade/pulse configuration */
 #define BLADE_NUMBER            2U      /* Pulses per revolution */
 
+/* Operating RPM range used for validation in EDGE PERIOD METHOD */
+#define RPM_MIN_OPERATING       60U     /* Minimum expected RPM (system requirement) */
+#define RPM_MAX_OPERATING       15000U  /* Maximum expected RPM (system requirement) */
+
 /* Timer configuration */
 #define RPM_CALC_PERIOD_MS      100U    /* Timer3 interrupt period (ms) */
 
@@ -63,9 +67,23 @@
  * EDGE PERIOD METHOD - CONFIGURATION
  *---------------------------------------------------------------------------*/
 
-/* Period validation */
-#define MIN_EDGE_INTERVAL_US    3000U     /* Min valid period (000 μs) */
-#define MAX_EDGE_INTERVAL_MS    2000U //60000U   /* Max valid period (60 s) */
+/*
+ * Period validation (time between blade passages).
+ * With BLADE_NUMBER pulses per revolution:
+ *   period_us(min) = 60e6 / (RPM_MAX_OPERATING * BLADE_NUMBER)
+ *   period_us(max) = 60e6 / (RPM_MIN_OPERATING * BLADE_NUMBER)
+ */
+#define RPM_PERIOD_MIN_US       (60000000UL / (RPM_MAX_OPERATING * BLADE_NUMBER))
+#define RPM_PERIOD_MAX_US       (60000000UL / (RPM_MIN_OPERATING * BLADE_NUMBER))
+
+/*
+ * Pulse HIGH width validation (rise->fall window).
+ * This is used to reject very narrow glitches (EMI/bounce) and absurdly long
+ * pulses. The MAX value is intentionally generous; tune after observing real
+ * sensor behavior.
+ */
+#define RPM_HIGH_MIN_US         30U
+#define RPM_HIGH_MAX_US         200000UL
 
 /* Timeout for stopped motor detection */
 #define RPM_STOP_TIMEOUT_MS     2000U    /* Motor stopped if no edge for 2s */

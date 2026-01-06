@@ -498,9 +498,8 @@ static sys_state_t state_processing(void)
     
 #ifdef RPM_EDGE_PERIOD_METHOD
     /* Get RPM directly from ISR calculation (period-based) */
-        current_rpm = rpm_get_value();    
-    /* Optional: Apply moving average filter */
-    rpm_update_filter(current_rpm);
+    current_rpm = rpm_get_value();
+    (void)current_rpm; /* RPM is already filtered/updated inside the ISR */
     g_scaled_rpm = rpm_get_filtered();
 #else /* RPM_EDGE_COUNT_METHOD */
 /* Get raw RPM count and calculate scaled RPM */
