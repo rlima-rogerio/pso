@@ -568,8 +568,9 @@ void pso_rpm_config(void)
     
     /* Configure to capture on RISING edges */
     WTIMER1_CTL_R &= ~TIMER_CTL_TAEVENT_M;          /* Clear event bits */
-    WTIMER1_CTL_R |= TIMER_CTL_TAEVENT_POS;         /* Capture on rising edge */
-    
+    WTIMER1_CTL_R |= TIMER_CTL_TAEVENT_BOTH;         /* Capture on both edges */ 
+    //WTIMER1_CTL_R |= TIMER_CTL_TAEVENT_POS;         /* Capture on rising edge */
+
     /* Set maximum count value */
     WTIMER1_TAILR_R = 0xFFFFFFFF;                   /* Count to max */
 
