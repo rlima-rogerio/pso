@@ -163,7 +163,7 @@ int main(void)
 #elif defined(PWM_PROFILE_SINGLE_STEP_SELECTED)
     /* Configure custom step profile */
     step_config = (step_config_t){
-        .step_interval_ms = 3000, /* Time between step changes (5 seconds) */
+        .step_interval_ms = 10000, /* Time between step changes (5 seconds) */
         .num_steps = 3,           /* Number of steps in the sequence */
         .steps = {0, 60, 0},      /* Step values (0-100%) */
         .cycles = 1,              /* Number of cycles to repeat */
@@ -499,8 +499,13 @@ static sys_state_t state_processing(void)
 #ifdef RPM_EDGE_PERIOD_METHOD
     /* Get RPM directly from ISR calculation (period-based) */
     current_rpm = rpm_get_value();
-    (void)current_rpm; /* RPM is already filtered/updated inside the ISR */
-    g_scaled_rpm = rpm_get_filtered();
+    
+    // (void)current_rpm; /* RPM is already filtered/updated inside the ISR */
+    if (rpm_is_stopped())
+        g_scaled_rpm = 0;
+    else
+        g_scaled_rpm = g_rpm_value;//rpm_get_filtered();
+
 #else /* RPM_EDGE_COUNT_METHOD */
 /* Get raw RPM count and calculate scaled RPM */
     // raw_rpm = rpm_get_raw_count();
@@ -671,6 +676,7 @@ static sys_state_t state_stopping(void)
     /* Ensure PWM is fully stopped */
     pwm_profile_stop();                         // Stop PWM profile execution
     pwm_set_throttle(0);                        /* Ensure PWM at 0% duty cycle */
+    // rpm_reset();
 
     /* Flush any remaining data in FIFOs */
     while (!fifo_is_empty(&g_fifo_ping))

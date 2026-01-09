@@ -28,6 +28,10 @@
 // #define RPM_EDGE_COUNT_METHOD  /* Edge counting (default) */
 #define RPM_EDGE_PERIOD_METHOD /* Period measurement */
 
+/* Blade detection logic configuration */
+#define BLADE_DETECTION_LOGIC_INVERTEDED     /* Blade = LOW pulse */
+// #define BLADE_DETECTION_LOGIC_DIRECT         /* Blade = HIGH pulse */
+
 
 
 /* If neither is defined, default to edge count */
@@ -77,13 +81,28 @@
 #define RPM_PERIOD_MAX_US       (60000000UL / (RPM_MIN_OPERATING * BLADE_NUMBER))
 
 /*
+ * LAYER 1: DEBOUNCING - Minimum Time Between Accepted Edges
+ */
+#define MIN_EDGE_INTERVAL_US    500U    /* 500 µs debouncing */
+
+/*
+ * LAYER 2: CONSISTENCY CHECK - Maximum Period Variation
+ */
+#define MAX_PERIOD_VARIATION_PCT 50U    /* 50% max variation */
+
+/*
  * Pulse HIGH width validation (rise->fall window).
  * This is used to reject very narrow glitches (EMI/bounce) and absurdly long
  * pulses. The MAX value is intentionally generous; tune after observing real
  * sensor behavior.
  */
-#define RPM_HIGH_MIN_US         30U
+#define RPM_HIGH_MIN_US         50U
 #define RPM_HIGH_MAX_US         200000UL
+
+// Low pulse width validation (fall->rise window).
+#define RPM_LOW_MIN_US   50U
+#define RPM_LOW_MAX_US   200000U
+
 
 /* Timeout for stopped motor detection */
 #define RPM_STOP_TIMEOUT_MS     2000U    /* Motor stopped if no edge for 2s */

@@ -223,8 +223,8 @@ uint8_t packet_data(ulink_pso_data_t* dp)
     dp->accel[2] = adc1_buffer[1];
     
     /* RPM */
-    // dp->rpm = g_scaled_rpm;
-		dp->rpm = (uint16_t)g_period_us; // Debugging variable		
+     dp->rpm = (uint16_t)g_scaled_rpm;
+//		 dp->rpm = (uint16_t)g_period_us; // Debugging variable
 		// dp->rpm = (uint16_t)g_period_ticks; // Debugging variable		
 
     

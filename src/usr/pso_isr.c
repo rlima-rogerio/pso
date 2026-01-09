@@ -333,33 +333,36 @@ void Timer3AIntHandler(void)
  *     - Handles 32-bit timer overflow
  *     - Filters noise with MIN_EDGE_INTERVAL_US
  *******************************************************************************/
-void WTimer1AIntHandler(void)
+
+ #ifdef BLADE_DETECTION_LOGIC_DIRECT
+ void WTimer1AIntHandler(void)
 {
     /*
-     * EDGE PERIOD METHOD (Robust to spurious edges)
-     * =============================================
-     *
-     * Timer is configured for CAPTURE/EDGE-TIME and BOTH EDGES.
-     * Hardware does not identify rising vs falling edges, so we infer it by
-     * reading the GPIO level after the capture event:
-     *   - level == 1  => rising edge just occurred
-     *   - level == 0  => falling edge just occurred
-     *
-     * Strategy:
-     *   1) Observe consecutive captures (previous edge time is known).
-     *   2) Only if the time between edges is within a plausible HIGH pulse width
-     *      window, we read GPIO level to decide if the current edge is FALL.
-     *   3) A valid blade passage is a HIGH pulse (rise->fall) with valid width.
-     *   4) Timestamp of passage is midpoint of HIGH pulse.
-     *   5) RPM is computed from interval between consecutive midpoints.
+     * EDGE PERIOD METHOD - DIRECT LOGIC (Blade = HIGH pulse)
+     * Timer: CAPTURE / EDGE-TIME / BOTH EDGES
+     * Inference: read GPIO level after capture
+     *   level_high == 1 -> RISE (start HIGH)
+     *   level_high == 0 -> FALL (end HIGH) -> compute midpoint & RPM
      */
 
-    uint32_t t_now = WTIMER1_TAR_R;
-    static bool have_prev = false;
+    /* ---- local constants (keep behavior consistent) ---- */
+    enum { TICKS_PER_US = 40U };              /* 40 MHz => 40 ticks/us */
+    enum { US_ROUND = (TICKS_PER_US / 2U) };  /* for rounding */
+
+    /* ---- persistent state ---- */
+    static bool     have_prev = false;
     static uint32_t t_prev = 0;
 
-    static bool have_mid = false;
+    static bool     have_mid = false;
     static uint32_t t_mid_prev = 0;
+
+    static uint32_t t_rise = 0;
+    static uint32_t t_fall = 0;
+
+    static uint32_t last_rpm = 0;
+
+    /* ---- capture timestamp ---- */
+    uint32_t t_now = WTIMER1_TAR_R;
 
     /* Clear interrupt flag early */
     WTIMER1_ICR_R = TIMER_ICR_CAECINT;
@@ -371,38 +374,34 @@ void WTimer1AIntHandler(void)
         return;
     }
 
-    /* Time between consecutive edges (ticks), handles wrap naturally with unsigned math */
-    uint32_t dt_ticks = (uint32_t)(t_now - t_prev);
-    uint32_t dt_us = (dt_ticks + 20U) / 40U;  /* 40 MHz => 40 ticks/us */
+    /* Time between consecutive edges (ticks/us) */
+    uint32_t dt_ticks = (uint32_t)(t_now - t_prev);                  /* wrap-safe */
+    uint32_t dt_us    = (dt_ticks + US_ROUND) / TICKS_PER_US;
 
-    /* Update previous edge timestamp for next ISR */
-    t_prev = t_now;
+    t_prev = t_now; /* update for next ISR */
 
-    /* Gate BEFORE reading GPIO level: accept only plausible HIGH pulse widths */
-    if ((dt_us < RPM_HIGH_MIN_US) || (dt_us > RPM_HIGH_MAX_US))
+    /* Gate BEFORE reading GPIO level: reject very short intervals (debounce/glitch) */
+    if (dt_us < RPM_HIGH_MIN_US)
     {
         return;
     }
 
-    /* Read the current pin level (PC6). Only meaningful now that timing is plausible. */
-    bool level_high = ((GPIO_PORTC_DATA_R & GPIO_PIN_6) != 0U);
+    /* Read current pin level (PC6). */
+    const bool level_high = ((GPIO_PORTC_DATA_R & GPIO_PIN_6) != 0U);
 
-    /* We only process completed HIGH pulses, which end at a FALL edge (level becomes 0). */
     if (level_high)
     {
-        /* Rising edge (likely start of HIGH pulse) - nothing to do now */
+        /* RISE edge: start of HIGH pulse */
+        t_rise = t_now;
         return;
     }
 
-    /* Current edge is a FALL -> previous edge was the RISE. Build HIGH pulse. */
-    uint32_t t_rise = (uint32_t)(t_now - dt_ticks);
+    /* FALL edge: end of HIGH pulse */
+    t_fall = t_now;
 
-    /* High width checks are already done via dt_us gate; keep debug variables */
-    g_period_us = dt_us;
-    g_period_ticks = dt_ticks;
-
-    /* Midpoint time in ticks (for better precision), then convert to us for RPM math */
-    uint32_t t_mid = (uint32_t)(t_rise + (dt_ticks / 2U));
+    /* Midpoint (wrap-safe): compute width then midpoint, avoids (t_rise+t_fall) overflow */
+    const uint32_t w_high_ticks = (uint32_t)(t_fall - t_rise);        /* wrap-safe */
+    const uint32_t t_mid        = (uint32_t)(t_rise + (w_high_ticks / 2U));
 
     if (!have_mid)
     {
@@ -411,31 +410,202 @@ void WTimer1AIntHandler(void)
         return;
     }
 
-    uint32_t dp_ticks = (uint32_t)(t_mid - t_mid_prev);
-    uint32_t dp_us = (dp_ticks + 20U) / 40U;
+    /* Interval between consecutive midpoints */
+    const uint32_t dp_ticks = (uint32_t)(t_mid - t_mid_prev);
+    const uint32_t dp_us    = (dp_ticks + US_ROUND) / TICKS_PER_US;
 
-    /* Validate interval between blade passages using operating range (60..15000 RPM) */
-    if ((dp_us >= RPM_PERIOD_MIN_US) && (dp_us <= RPM_PERIOD_MAX_US) && (dp_us > 0U))
+    /* Debug: keep variables consistent */
+    g_period_ticks = w_high_ticks;  /* HIGH pulse width (ticks) */
+    g_period_us    = (w_high_ticks + US_ROUND) / TICKS_PER_US; /* HIGH pulse width (us) */
+    g_edge_interval_us = dp_us;     /* midpoint-to-midpoint interval (us) */
+
+    /* Optional: enable/disable range check while debugging */
+#if 0
+    if ((dp_us < RPM_PERIOD_MIN_US) || (dp_us > RPM_PERIOD_MAX_US) || (dp_us == 0U))
     {
-        g_edge_interval_us = dp_us;
-        g_edge_valid_count++;
-        g_edge_timeout_counter = 0U; /* Reset timeout counter */
+        return;
+    }
+#else
+    if (dp_us == 0U)
+    {
+        return; /* avoid divide-by-zero */
+    }
+#endif
 
-        /* RPM = 60,000,000 / (period_us * pulses_per_rev) */
-        g_rpm_value = 60000000UL / (dp_us * BLADE_NUMBER);
+    g_edge_valid_count++;
+    g_edge_timeout_counter = 0U;
 
-        /* Update moving average filter (ISR owns the filter update) */
-        rpm_update_filter(g_rpm_value);
+    /* RPM candidate: RPM = 60,000,000 / (period_us * pulses_per_rev) */
+    uint32_t rpm = 60000000UL / (dp_us * BLADE_NUMBER);
 
-        /* Signal new RPM available */
-        g_rpm_ready_flag ^= 0xFF;
-
-        /* Update reference only on accepted event */
-        t_mid_prev = t_mid;
+    /* Clamp to operating range; if out-of-range, keep last valid */
+    if ((rpm >= RPM_MIN_OPERATING) && (rpm <= RPM_MAX_OPERATING))
+    {
+        if ((last_rpm != 0U) &&
+            ((rpm >= (uint32_t)(18U * last_rpm / 10U)) ||  /* +80% */
+             (rpm <= (uint32_t)( 8U * last_rpm / 10U))))   /* -20% */
+        {
+            /* Probably spurious measurement, but within valid window */
+            rpm = last_rpm;
+        }
+        last_rpm = rpm;
+    }
+    else
+    {
+        /* Outside valid measurement: use last valid measurement */
+        rpm = last_rpm;
     }
 
-    DEBUG_ADC_TOGGLE();                     /* PD6 - ADC debug pin */
+    g_rpm_value = rpm;
+
+    /* Update moving average filter (ISR owns the filter update) */
+    rpm_update_filter(g_rpm_value);
+
+    /* Signal new RPM available */
+    g_rpm_ready_flag ^= 0xFF;
+
+    /* Update reference only on processed event */
+    t_mid_prev = t_mid;
+
+    DEBUG_ADC_TOGGLE(); /* PD6 - ADC debug pin */
 }
+#else /* BLADE_DETECTION_LOGIC_INVERTED */
+ void WTimer1AIntHandler(void)
+{
+    /*
+     * EDGE PERIOD METHOD - INVERTED LOGIC (Blade = LOW pulse)
+     * Timer: CAPTURE / EDGE-TIME / BOTH EDGES
+     * Inference: read GPIO level after capture
+     *   level_high == 0 -> FALL (start LOW)
+     *   level_high == 1 -> RISE (end LOW)  -> compute midpoint & RPM
+     */
+
+    /* ---- local constants (keep behavior consistent) ---- */
+    enum { TICKS_PER_US = 40U };              /* 40 MHz => 40 ticks/us */
+    enum { US_ROUND = (TICKS_PER_US / 2U) };  /* for rounding */
+
+    /* ---- persistent state ---- */
+    static bool     have_prev = false;
+    static uint32_t t_prev = 0;
+
+    static bool     have_mid = false;
+    static uint32_t t_mid_prev = 0;
+
+    static uint32_t t_fall = 0;
+    static uint32_t t_rise = 0;
+
+    static uint32_t last_rpm = 0;
+
+    /* ---- capture timestamp ---- */
+    uint32_t t_now = WTIMER1_TAR_R;
+
+    /* Clear interrupt flag early */
+    WTIMER1_ICR_R = TIMER_ICR_CAECINT;
+
+    if (!have_prev)
+    {
+        t_prev = t_now;
+        have_prev = true;
+        return;
+    }
+
+    /* Time between consecutive edges (ticks/us) */
+    uint32_t dt_ticks = (uint32_t)(t_now - t_prev);                  /* wrap-safe */
+    uint32_t dt_us    = (dt_ticks + US_ROUND) / TICKS_PER_US;
+
+    t_prev = t_now; /* update for next ISR */
+
+    /* Gate BEFORE reading GPIO level: reject very short intervals (debounce/glitch) */
+    if (dt_us < RPM_LOW_MIN_US)
+    {
+        return;
+    }
+
+    /* Read current pin level (PC6). */
+    const bool level_high = ((GPIO_PORTC_DATA_R & GPIO_PIN_6) != 0U);
+
+    if (!level_high)
+    {
+        /* FALL edge: start of LOW pulse */
+        t_fall = t_now;
+        return;
+    }
+
+    /* RISE edge: end of LOW pulse */
+    t_rise = t_now;
+
+    /* Midpoint (wrap-safe): compute width then midpoint, avoids (t_fall+t_rise) overflow */
+    const uint32_t w_low_ticks = (uint32_t)(t_rise - t_fall);        /* wrap-safe */
+    const uint32_t t_mid       = (uint32_t)(t_fall + (w_low_ticks / 2U));
+
+    if (!have_mid)
+    {
+        t_mid_prev = t_mid;
+        have_mid = true;
+        return;
+    }
+
+    /* Interval between consecutive midpoints */
+    const uint32_t dp_ticks = (uint32_t)(t_mid - t_mid_prev);
+    const uint32_t dp_us    = (dp_ticks + US_ROUND) / TICKS_PER_US;
+
+    /* Debug: keep variables consistent */
+    g_period_ticks = w_low_ticks;  /* LOW pulse width (ticks) */
+    g_period_us    = (w_low_ticks + US_ROUND) / TICKS_PER_US; /* LOW pulse width (us) */
+    g_edge_interval_us = dp_us;    /* midpoint-to-midpoint interval (us) */
+
+    /* Optional: enable/disable range check while debugging */
+#if 0
+    if ((dp_us < RPM_PERIOD_MIN_US) || (dp_us > RPM_PERIOD_MAX_US) || (dp_us == 0U))
+    {
+        return;
+    }
+#else
+    if (dp_us == 0U)
+    {
+        return; /* avoid divide-by-zero */
+    }
+#endif
+
+    g_edge_valid_count++;
+    g_edge_timeout_counter = 0U;
+
+    /* RPM candidate: RPM = 60,000,000 / (period_us * pulses_per_rev) */
+    uint32_t rpm = 60000000UL / (dp_us * BLADE_NUMBER);
+
+    /* Clamp to operating range; if out-of-range, keep last valid */
+    if ((rpm >= RPM_MIN_OPERATING) && (rpm <= RPM_MAX_OPERATING))
+    {
+        if ((last_rpm != 0U) &&
+            ((rpm >= (uint32_t)(18U * last_rpm / 10U)) ||  /* +80% */
+             (rpm <= (uint32_t)( 8U * last_rpm / 10U))))   /* -20% */
+        {
+            /* Probably spurious measurement, but within valid window */
+            rpm = last_rpm;
+        }
+        last_rpm = rpm;
+    }
+    else
+    {
+        /* Outside valid measurement: use last valid measurement */
+        rpm = last_rpm;
+    }
+
+    g_rpm_value = rpm;
+
+    /* Update moving average filter (ISR owns the filter update) */
+    rpm_update_filter(g_rpm_value);
+
+    /* Signal new RPM available */
+    g_rpm_ready_flag ^= 0xFF;
+
+    /* Update reference only on processed event */
+    t_mid_prev = t_mid;
+
+    DEBUG_ADC_TOGGLE(); /* PD6 - ADC debug pin */
+}
+#endif
+
 
 /*******************************************************************************
  * FUNCTION: Timer3AIntHandler (EDGE PERIOD METHOD)
