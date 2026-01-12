@@ -56,9 +56,9 @@
  ******************************************************************************/
 // #define PWM_PROFILE_NONE_SELECTED            /* NOT TESTED */
 
-//  #define PWM_PROFILE_TRAPEZOID_SELECTED       /* IMPLEMENTED */
+  #define PWM_PROFILE_TRAPEZOID_SELECTED       /* IMPLEMENTED */
 //#define PWM_PROFILE_LINEAR_SELECTED          /* IMPLEMENTED */
-#define PWM_PROFILE_SINGLE_STEP_SELECTED    /* IMPLEMENTED */
+//#define PWM_PROFILE_SINGLE_STEP_SELECTED    /* IMPLEMENTED */
 // #define PWM_PROFILE_MULTI_STEP_SELECTED     /* IMPLEMENTED */
 
 // #define PWM_PROFILE_CUSTOM_SELECTED          /* NOT IMPLEMENTED */
@@ -163,7 +163,7 @@ int main(void)
 #elif defined(PWM_PROFILE_SINGLE_STEP_SELECTED)
     /* Configure custom step profile */
     step_config = (step_config_t){
-        .step_interval_ms = 10000, /* Time between step changes (5 seconds) */
+        .step_interval_ms = 5000, /* Time between step changes (5 seconds) */
         .num_steps = 3,           /* Number of steps in the sequence */
         .steps = {0, 60, 0},      /* Step values (0-100%) */
         .cycles = 1,              /* Number of cycles to repeat */
@@ -173,11 +173,11 @@ int main(void)
     /* Configure custom trapezoidal profile */
     trapezoid_config = (trapezoid_config_t){
         .duration_ms = 15000,                   // 20 seconds total duration
-        .ramp_up_ms = 5000,                     // 5 seconds ramp up
-        .hold_ms = 5000,                       // 10 seconds hold at maximum
-        .ramp_down_ms = 5000,                   // 5 seconds ramp down
+        .ramp_up_ms = 6000,                     // 5 seconds ramp up
+        .hold_ms = 3000,                       // 10 seconds hold at maximum
+        .ramp_down_ms = 6000,                   // 5 seconds ramp down
         .min_value = 0,                         // Minimum 0% duty cycle
-        .max_value = 60,                       // Maximum 100% duty cycle
+        .max_value = 50,                       // Maximum 100% duty cycle
         .cycles = 2,                            // Repeat 2 times
         .auto_repeat = false                    // No auto-repeat
     };
