@@ -573,16 +573,58 @@ void Timer3AIntHandler(void)
     /* RPM candidate: RPM = 60,000,000 / (period_us * pulses_per_rev) */
     uint32_t rpm = 60000000UL / (dp_us * BLADE_NUMBER);
 
+    // //---
+    // /* Clamp to operating range; if out-of-range, keep last valid */
+    // if ((rpm >= RPM_MIN_OPERATING) && (rpm <= RPM_MAX_OPERATING))
+    // {
+    //     if ((last_rpm != 0U) &&
+    //         ((rpm >= (uint32_t)(13U * last_rpm / 10U)) ||  /* 13 = 1.3 = +30% */
+    //          (rpm <= (uint32_t)( 7U * last_rpm / 10U))))   /*  7 = 0.7 = -30% */
+    //     {
+    //         /* Probably spurious measurement, but within valid window */
+    //         rpm = last_rpm;
+    //     }
+    //     last_rpm = rpm;
+    // }
+    // else
+    // {
+    //     /* Outside valid measurement: use last valid measurement */
+    //     rpm = last_rpm;
+    // }
+    // //---
+
+    // TESTING: alternative filtering approach
     /* Clamp to operating range; if out-of-range, keep last valid */
     if ((rpm >= RPM_MIN_OPERATING) && (rpm <= RPM_MAX_OPERATING))
     {
-        if ((last_rpm != 0U) &&
-            ((rpm >= (uint32_t)(18U * last_rpm / 10U)) ||  /* +80% */
-             (rpm <= (uint32_t)( 8U * last_rpm / 10U))))   /* -20% */
+        if (last_rpm != 0U)
         {
-            /* Probably spurious measurement, but within valid window */
-            rpm = last_rpm;
+            /* Dynamic tolerance:
+            - Up to 2000 RPM: allow larger swings (noisy region)
+            - Above 2000 RPM: tighter tolerance (clean region)
+            */
+            uint32_t up_pct, down_pct;
+
+            if (last_rpm < 300U) {          /* very low RPM */
+                up_pct = 200U;  down_pct = 200U;
+            } else if (last_rpm < 800U) {   /* low RPM */
+                up_pct = 100U;  down_pct = 100U;
+            } else if (last_rpm < 3000U) {  /* noisy band up to 2000 RPM */
+                up_pct = 50U;  down_pct = 40U;
+            } else {                        /* >= 2000 RPM: clean band */
+                up_pct = 15U;  down_pct = 12U;
+            }
+
+            uint32_t rpm_hi = (last_rpm * (100U + up_pct)) / 100U;
+            uint32_t rpm_lo = (last_rpm * (100U - down_pct)) / 100U;
+
+            if ((rpm > rpm_hi) || (rpm < rpm_lo))
+            {
+                /* Probably spurious measurement */
+                rpm = last_rpm;
+            }
         }
+
         last_rpm = rpm;
     }
     else
@@ -590,6 +632,8 @@ void Timer3AIntHandler(void)
         /* Outside valid measurement: use last valid measurement */
         rpm = last_rpm;
     }
+
+    // TESTING: alternative filtering approach
 
     g_rpm_value = rpm;
 

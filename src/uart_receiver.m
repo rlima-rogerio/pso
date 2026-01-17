@@ -275,6 +275,9 @@ fprintf('Erros de checksum: %d\n', checksum_errors);
 fprintf('Tempo total: %.2f s\n', total_time);
 fprintf('Taxa média: %.1f pkt/s\n', avg_rate);
 
+% Entra no diretorio para salvar dados
+cd testdata
+
 %% Salvar dados em arquivo .mat
 fprintf('\nSalvando dados em %s...\n', OUTPUT_MAT);
 save(OUTPUT_MAT, 'data', 'packet_count', 'error_count', ...
@@ -400,6 +403,9 @@ fprintf('Potência: min=%-6.2f  max=%-6.2f  média=%-7.2f W\n', ...
 if CALIBRATION_MODE
     cd ../src;
 end
+
+% Retorna ao diretorio main
+cd ..;
 
 fprintf('\n=== Processo concluído ===\n');
 
