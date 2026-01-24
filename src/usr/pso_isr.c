@@ -470,184 +470,258 @@ void Timer3AIntHandler(void)
     DEBUG_ADC_TOGGLE(); /* PD6 - ADC debug pin */
 }
 #else /* BLADE_DETECTION_LOGIC_INVERTED */
- void WTimer1AIntHandler(void)
+/*
+    * EDGE PERIOD METHOD - INVERTED LOGIC (Blade = LOW pulse)
+    * Timer: CAPTURE / EDGE-TIME / BOTH EDGES
+    * Inference: read GPIO level after capture
+    *   level_high == 0 -> FALL (start LOW)
+    *   level_high == 1 -> RISE (end LOW)  -> compute midpoint & RPM
+    */
+
+/* ---- local constants (keep behavior consistent) ---- */
+void WTimer1AIntHandler(void)
 {
-    /*
-     * EDGE PERIOD METHOD - INVERTED LOGIC (Blade = LOW pulse)
-     * Timer: CAPTURE / EDGE-TIME / BOTH EDGES
-     * Inference: read GPIO level after capture
-     *   level_high == 0 -> FALL (start LOW)
-     *   level_high == 1 -> RISE (end LOW)  -> compute midpoint & RPM
-     */
-
-    /* ---- local constants (keep behavior consistent) ---- */
-    enum { TICKS_PER_US = 40U };              /* 40 MHz => 40 ticks/us */
-    enum { US_ROUND = (TICKS_PER_US / 2U) };  /* for rounding */
-
-    /* ---- persistent state ---- */
-    static bool     have_prev = false;
-    static uint32_t t_prev = 0;
-
-    static bool     have_mid = false;
-    static uint32_t t_mid_prev = 0;
-
-    static uint32_t t_fall = 0;
-    static uint32_t t_rise = 0;
-
-    static uint32_t last_rpm = 0;
-
-    /* ---- capture timestamp ---- */
+    /* ======================================================================
+     * CONSTANTS
+     * ====================================================================== */
+    enum { TICKS_PER_US = 40U };     /* 40 MHz => 40 ticks/microsecond */
+    enum { US_ROUND = 20U };         /* Rounding factor: TICKS_PER_US/2 */
+    
+    /* ======================================================================
+     * PERSISTENT STATE VARIABLES
+     * 
+     * These static variables preserve their values between ISR calls,
+     * implementing a state machine that tracks edge detection and midpoint
+     * calculation across multiple interrupts.
+     * ====================================================================== */
+    
+    /* Edge Detection State Machine */
+    static bool have_rising_edge = false;   /* True when rising edge detected */
+    static bool have_falling_edge = false;  /* True when falling edge detected */
+    static bool toggle = false;             /* XOR result (unused, kept for compatibility) */
+    static bool last_level = false;         /* Previous pin level for XOR calculation */
+    
+    /* Edge Timestamps (in timer ticks) */
+    static uint32_t t_rise = 0;      /* Timestamp of last rising edge */
+    static uint32_t t_fall = 0;      /* Timestamp of last falling edge */
+    
+    /* Midpoint Calculation */
+    static bool have_mid = false;         /* True after first valid midpoint (unused) */
+    static uint32_t t_mid = 0;            /* Current midpoint timestamp */
+    static uint32_t t_mid_prev = 0;       /* Previous midpoint timestamp */
+    static uint32_t t_mid_counter = 0;    /* Count of valid midpoints processed */
+    
+    /* RPM Calculation State */
+    static uint32_t rpm = 0;              /* Calculated RPM value (unused) */
+    static uint32_t last_rpm = 0;         /* Last valid RPM for filtering (unused) */
+    static bool compute_rpm = false;      /* Flag to trigger RPM calculation */
+    
+    /* ======================================================================
+     * CAPTURE CURRENT TIMESTAMP
+     * 
+     * Read timer value immediately to minimize jitter. The timer counts UP
+     * continuously at 40 MHz (25 ns resolution).
+     * ====================================================================== */
     uint32_t t_now = WTIMER1_TAR_R;
-
-    /* Clear interrupt flag early */
+    
+    /* Clear interrupt flag early to avoid missing next edge */
     WTIMER1_ICR_R = TIMER_ICR_CAECINT;
-
-    if (!have_prev)
-    {
-        t_prev = t_now;
-        have_prev = true;
-        return;
-    }
-
-    /* Time between consecutive edges (ticks/us) */
-    uint32_t dt_ticks = (uint32_t)(t_now - t_prev);                  /* wrap-safe */
-    uint32_t dt_us    = (dt_ticks + US_ROUND) / TICKS_PER_US;
-
-    t_prev = t_now; /* update for next ISR */
-
-    /* Gate BEFORE reading GPIO level: reject very short intervals (debounce/glitch) */
-    if (dt_us < RPM_LOW_MIN_US)
-    {
-        return;
-    }
-
-    /* Read current pin level (PC6). */
+    
+    /* ======================================================================
+     * READ CURRENT GPIO LEVEL
+     * 
+     * Read the digital level of PC6 pin. This determines whether current
+     * interrupt was triggered by rising edge (LOW→HIGH) or falling edge
+     * (HIGH→LOW).
+     * ====================================================================== */
     const bool level_high = ((GPIO_PORTC_DATA_R & GPIO_PIN_6) != 0U);
-
-    if (!level_high)
+    
+    /* ======================================================================
+     * EDGE DETECTION USING XOR
+     * 
+     * MATLAB equivalent: toggle(n) = xor(level(n-1), level(n))
+     * 
+     * The XOR operation detects transitions:
+     *   - If level changed: toggle = true (edge occurred)
+     *   - If level unchanged: toggle = false (no edge, spurious interrupt)
+     * 
+     * This filters out noise and ensures we only process real edges.
+     * ====================================================================== */
+    toggle = (last_level != level_high);
+    last_level = level_high;
+    
+    /* ──────────────────────────────────────────────────────────────────
+     * RISING EDGE DETECTION
+     * 
+     * Condition: toggle=true AND level_high=true
+     * Meaning: Pin transitioned from LOW to HIGH (start of HIGH pulse)
+     * 
+     * Action: Record timestamp and set flag
+     * ────────────────────────────────────────────────────────────────── */
+    if (toggle && level_high)
     {
-        /* FALL edge: start of LOW pulse */
+        t_rise = t_now;
+        have_rising_edge = true;
+    }
+    
+    /* ──────────────────────────────────────────────────────────────────
+     * FALLING EDGE DETECTION
+     * 
+     * Condition: toggle=true AND level_high=false
+     * Meaning: Pin transitioned from HIGH to LOW (end of HIGH pulse)
+     * 
+     * Action: Record timestamp and set flag
+     * ────────────────────────────────────────────────────────────────── */
+    if (toggle && !level_high)
+    {
         t_fall = t_now;
-        return;
+        have_falling_edge = true;
     }
-
-    /* RISE edge: end of LOW pulse */
-    t_rise = t_now;
-
-    /* Midpoint (wrap-safe): compute width then midpoint, avoids (t_fall+t_rise) overflow */
-    const uint32_t w_low_ticks = (uint32_t)(t_rise - t_fall);        /* wrap-safe */
-    const uint32_t t_mid       = (uint32_t)(t_fall + (w_low_ticks / 2U));
-
-    if (!have_mid)
+    
+    /* ======================================================================
+     * MIDPOINT CALCULATION
+     * 
+     * After detecting both rising and falling edges, we have a complete
+     * HIGH pulse. Calculate the midpoint timestamp, which represents the
+     * center of the blade passing through the sensor.
+     * 
+     * MATLAB equivalent:
+     *   if (have_rising_edge && have_falling_edge)
+     *       tsec_mid_prev = tsec_mid;
+     *       if (tsec_low - tsec_high > 1e-5)  % 10us minimum
+     *           tsec_mid = (tsec_low + tsec_high) / 2
+     *           have_rising_edge = false;
+     *           have_falling_edge = false;
+     *           compute_rpm = true;
+     *           t_mid_counter = t_mid_counter + 1;
+     *       end
+     *   end
+     * ====================================================================== */
+    
+    if (have_rising_edge && have_falling_edge)
     {
+        /* ──────────────────────────────────────────────────────────────
+         * CALCULATE HIGH PULSE WIDTH
+         * 
+         * Subtract timestamps (automatically handles timer wraparound due
+         * to unsigned arithmetic properties).
+         * Convert from ticks to microseconds with rounding.
+         * ────────────────────────────────────────────────────────────── */
+        const uint32_t w_high_ticks = (uint32_t)(t_fall - t_rise);  /* Wrap-safe */
+        const uint32_t w_high_us = (w_high_ticks + US_ROUND) / TICKS_PER_US;
+        
+        /* Save previous midpoint before updating (matches MATLAB order) */
         t_mid_prev = t_mid;
-        have_mid = true;
-        return;
-    }
-
-    /* Interval between consecutive midpoints */
-    const uint32_t dp_ticks = (uint32_t)(t_mid - t_mid_prev);
-    const uint32_t dp_us    = (dp_ticks + US_ROUND) / TICKS_PER_US;
-
-    /* Debug: keep variables consistent */
-    g_period_ticks = w_low_ticks;  /* LOW pulse width (ticks) */
-    g_period_us    = (w_low_ticks + US_ROUND) / TICKS_PER_US; /* LOW pulse width (us) */
-    g_edge_interval_us = dp_us;    /* midpoint-to-midpoint interval (us) */
-
-    /* Optional: enable/disable range check while debugging */
-#if 0
-    if ((dp_us < RPM_PERIOD_MIN_US) || (dp_us > RPM_PERIOD_MAX_US) || (dp_us == 0U))
-    {
-        return;
-    }
-#else
-    if (dp_us == 0U)
-    {
-        return; /* avoid divide-by-zero */
-    }
-#endif
-
-    g_edge_valid_count++;
-    g_edge_timeout_counter = 0U;
-
-    /* RPM candidate: RPM = 60,000,000 / (period_us * pulses_per_rev) */
-    uint32_t rpm = 60000000UL / (dp_us * BLADE_NUMBER);
-
-    // //---
-    // /* Clamp to operating range; if out-of-range, keep last valid */
-    // if ((rpm >= RPM_MIN_OPERATING) && (rpm <= RPM_MAX_OPERATING))
-    // {
-    //     if ((last_rpm != 0U) &&
-    //         ((rpm >= (uint32_t)(13U * last_rpm / 10U)) ||  /* 13 = 1.3 = +30% */
-    //          (rpm <= (uint32_t)( 7U * last_rpm / 10U))))   /*  7 = 0.7 = -30% */
-    //     {
-    //         /* Probably spurious measurement, but within valid window */
-    //         rpm = last_rpm;
-    //     }
-    //     last_rpm = rpm;
-    // }
-    // else
-    // {
-    //     /* Outside valid measurement: use last valid measurement */
-    //     rpm = last_rpm;
-    // }
-    // //---
-
-    // TESTING: alternative filtering approach
-    /* Clamp to operating range; if out-of-range, keep last valid */
-    if ((rpm >= RPM_MIN_OPERATING) && (rpm <= RPM_MAX_OPERATING))
-    {
-        if (last_rpm != 0U)
+        
+        /* ──────────────────────────────────────────────────────────────
+         * VALIDATE PULSE WIDTH
+         * 
+         * Reject pulses shorter than RPM_HIGH_MIN_US (typically 10us).
+         * This filters out electrical noise and contact bounce.
+         * 
+         * MATLAB: if (tsec_low - tsec_high > 1e-5)
+         * ────────────────────────────────────────────────────────────── */
+        if (w_high_us > RPM_HIGH_MIN_US)
         {
-            /* Dynamic tolerance:
-            - Up to 2000 RPM: allow larger swings (noisy region)
-            - Above 2000 RPM: tighter tolerance (clean region)
-            */
-            uint32_t up_pct, down_pct;
+            /* ──────────────────────────────────────────────────────────
+             * CALCULATE MIDPOINT TIMESTAMP
+             * 
+             * MATLAB: tsec_mid = (tsec_low + tsec_high) / 2
+             * C: t_mid = t_rise + (w_high_ticks / 2)
+             * 
+             * Both formulas are equivalent. The C version avoids potential
+             * overflow from adding two large timestamps.
+             * ────────────────────────────────────────────────────────── */
+            t_mid = (uint32_t)(t_rise + (w_high_ticks / 2U));
 
-            if (last_rpm < 300U) {          /* very low RPM */
-                up_pct = 200U;  down_pct = 200U;
-            } else if (last_rpm < 800U) {   /* low RPM */
-                up_pct = 100U;  down_pct = 100U;
-            } else if (last_rpm < 3000U) {  /* noisy band up to 2000 RPM */
-                up_pct = 50U;  down_pct = 40U;
-            } else {                        /* >= 2000 RPM: clean band */
-                up_pct = 15U;  down_pct = 12U;
-            }
-
-            uint32_t rpm_hi = (last_rpm * (100U + up_pct)) / 100U;
-            uint32_t rpm_lo = (last_rpm * (100U - down_pct)) / 100U;
-
-            if ((rpm > rpm_hi) || (rpm < rpm_lo))
-            {
-                /* Probably spurious measurement */
-                rpm = last_rpm;
-            }
+            /* Reset edge detection flags for next pulse */
+            have_rising_edge = false;
+            have_falling_edge = false;
+            
+            /* Enable RPM calculation flag */
+            compute_rpm = true;
+            
+            /* Increment valid midpoint counter */
+            t_mid_counter++;
         }
+        
+        /* ══════════════════════════════════════════════════════════════
+         * RPM CALCULATION
+         * 
+         * After accumulating at least 2 midpoints, calculate RPM from the
+         * time interval between consecutive midpoints.
+         * 
+         * MATLAB equivalent:
+         *   if ((t_mid_counter > 1) && (compute_rpm))
+         *       compute_rpm = false;
+         *       RPM = 60 / (2 * (tsec_mid - tsec_mid_prev));
+         *   end
+         * 
+         * WHY DIVIDE BY 2?
+         * ─────────────────
+         * Each midpoint represents one blade passing. With 2 blades per
+         * revolution, the interval between midpoints is HALF the period:
+         * 
+         *   Midpoint 1 → Blade A passes
+         *   Midpoint 2 → Blade B passes  } Half revolution
+         *   Midpoint 3 → Blade A passes  } Complete revolution
+         * 
+         * Therefore:
+         *   Full period = 2 * (t_mid - t_mid_prev)
+         *   Frequency = 1 / period = 1 / (2 * interval)
+         *   RPM = Frequency * 60 = 60 / (2 * interval)
+         * 
+         * FORMULA CONVERSION:
+         * ───────────────────
+         * MATLAB: RPM = 60 / (2 * tsec_interval)
+         *   where tsec_interval is in seconds
+         * 
+         * C: RPM = 60,000,000 / (2 * dp_us)
+         *   where dp_us is in microseconds
+         *   60,000,000 = 60 seconds * 1,000,000 us/second
+         * 
+         * Simplified: RPM = 30,000,000 / dp_us
+         * 
+         * Generic form: RPM = 60,000,000 / (dp_us * BLADE_NUMBER)
+         *   where BLADE_NUMBER = 2
+         * ══════════════════════════════════════════════════════════════ */
+        
+        if (compute_rpm && (t_mid_counter > 1U))
+        {
+            /* Clear compute flag (single-shot calculation) */
+            compute_rpm = false;
 
-        last_rpm = rpm;
+            /* ──────────────────────────────────────────────────────────
+             * CALCULATE MIDPOINT INTERVAL
+             * 
+             * Subtract timestamps (wrap-safe unsigned arithmetic).
+             * Convert from ticks to microseconds with rounding.
+             * ────────────────────────────────────────────────────────── */
+            const uint32_t dp_ticks = (uint32_t)(t_mid - t_mid_prev);
+            const uint32_t dp_us = (dp_ticks + US_ROUND) / TICKS_PER_US;
+
+            /* ──────────────────────────────────────────────────────────
+             * CALCULATE RPM
+             * 
+             * Formula: RPM = 60,000,000 / (dp_us * BLADE_NUMBER)
+             * 
+             * Example (30,000 RPM, 2 blades):
+             *   Frequency = 30000/60 = 500 rps
+             *   Period = 1/500 = 2 ms = 2000 us per revolution
+             *   Midpoint interval = 2000/2 = 1000 us
+             *   RPM = 60,000,000 / (1000 * 2) = 30,000 ✓
+             * ────────────────────────────────────────────────────────── */
+            const uint32_t rpm = 60000000UL / (dp_us * BLADE_NUMBER);
+
+            /* Update global RPM value (read by main loop) */
+            g_rpm_value = rpm;
+
+            /* Update moving average filter for noise reduction */
+            rpm_update_filter(g_rpm_value);
+        }
     }
-    else
-    {
-        /* Outside valid measurement: use last valid measurement */
-        rpm = last_rpm;
-    }
-
-    // TESTING: alternative filtering approach
-
-    g_rpm_value = rpm;
-
-    /* Update moving average filter (ISR owns the filter update) */
-    rpm_update_filter(g_rpm_value);
-
-    /* Signal new RPM available */
-    g_rpm_ready_flag ^= 0xFF;
-
-    /* Update reference only on processed event */
-    t_mid_prev = t_mid;
-
-    DEBUG_ADC_TOGGLE(); /* PD6 - ADC debug pin */
 }
+
 #endif
 
 
