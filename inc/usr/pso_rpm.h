@@ -108,7 +108,7 @@
 #define RPM_STOP_TIMEOUT_MS     2000U    /* Motor stopped if no edge for 2s */
 
 /* Moving average filter */
-#define RPM_FILTER_SAMPLES      4U       /* Filter size (2-10 samples) */
+#define RPM_FILTER_SAMPLES      1U       /* Filter size (2-10 samples) */
 
 #else /* RPM_EDGE_COUNT_METHOD */
 /*-----------------------------------------------------------------------------

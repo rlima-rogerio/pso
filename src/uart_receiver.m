@@ -32,8 +32,13 @@ if CALIBRATION_MODE
     OUTPUT_MAT = sprintf("%s.mat", filename);
     OUTPUT_TXT = sprintf("%s.txt", filename);
 else
-    OUTPUT_MAT = 'daq.mat';
-    OUTPUT_TXT = 'daq.txt';
+    %% -------- OUTPUT FILES ----------    
+    out_dir = fullfile(pwd, "testdata");
+    if ~exist(out_dir, "dir"), mkdir(out_dir); end
+    ts = datetime("now");
+    base = "rpm_debug_" + string(datestr(ts, "yyyy-mm-dd_HH-MM-SS"));
+    OUTPUT_MAT = fullfile(out_dir, base + ".mat");
+    OUTPUT_TXT = fullfile(out_dir, base + ".txt");
 end
 
 BAUDRATE = 115200;

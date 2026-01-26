@@ -66,6 +66,7 @@ extern uart_raw_data_t g_uart0_data;         /* UART0 receive buffer */
  *******************************************************************************/
 uint8_t g_timer_a0_scan_flag = 0U;           /* Timer0A scan completion flag */
 volatile uint32_t g_timer_a3_scan_flag = 0U; /* Timer3A scan flag (RPM ready) */
+bool g_rpm_reset = false;                     // RPM reset flag
 
 /*******************************************************************************
  * ADC DATA BUFFERS
@@ -513,8 +514,10 @@ void WTimer1AIntHandler(void)
     
     /* RPM Calculation State */
     static uint32_t rpm = 0;              /* Calculated RPM value (unused) */
+    static uint32_t rpm_prev = 0;         /* Previous RPM value (unused) */
     static uint32_t last_rpm = 0;         /* Last valid RPM for filtering (unused) */
     static bool compute_rpm = false;      /* Flag to trigger RPM calculation */
+    
     
     /* ======================================================================
      * CAPTURE CURRENT TIMESTAMP
@@ -527,6 +530,48 @@ void WTimer1AIntHandler(void)
     /* Clear interrupt flag early to avoid missing next edge */
     WTIMER1_ICR_R = TIMER_ICR_CAECINT;
     
+
+    if (g_rpm_reset)
+    {
+        g_rpm_reset = false;
+
+        /* Reset RPM values */
+        rpm = 0U;
+        rpm_prev = 0U;
+        last_rpm = 0U;
+
+        /* Reset edge detection flags */
+        have_rising_edge = false;
+        have_falling_edge = false;
+
+        /* Reset edge timestamps */
+        t_rise = 0U;
+        t_fall = 0U;
+
+        /* Reset midpoint calculation */
+        have_mid = false;
+        t_mid = 0U;
+        t_mid_prev = 0U;
+        t_mid_counter = 0U;
+
+        /* Reset RPM calculation flag */
+        compute_rpm = false;
+
+        /* Reset XOR state (compatibility) */
+        toggle = false;
+        last_level = false;
+    }
+
+    /* ======================================================================
+     * TIMEOUT COUNTER RESET
+     * 
+     * Reset the edge timeout counter to indicate motor is running.
+     * This prevents false "stopped" detection during normal operation.
+     * This is done on every valid edge interrupt. The incrementing of the
+     * timeout counter occurs in a separate timer ISR (Timer3AIntHandler).
+     * ====================================================================== */
+    g_edge_timeout_counter = 0U; 
+
     /* ======================================================================
      * READ CURRENT GPIO LEVEL
      * 
@@ -544,7 +589,7 @@ void WTimer1AIntHandler(void)
      * The XOR operation detects transitions:
      *   - If level changed: toggle = true (edge occurred)
      *   - If level unchanged: toggle = false (no edge, spurious interrupt)
-     * 
+     *  
      * This filters out noise and ensures we only process real edges.
      * ====================================================================== */
     toggle = (last_level != level_high);
@@ -711,7 +756,62 @@ void WTimer1AIntHandler(void)
              *   Midpoint interval = 2000/2 = 1000 us
              *   RPM = 60,000,000 / (1000 * 2) = 30,000 ✓
              * ────────────────────────────────────────────────────────── */
-            const uint32_t rpm = 60000000UL / (dp_us * BLADE_NUMBER);
+            uint32_t rpm = 60000000UL / (dp_us * BLADE_NUMBER);
+
+            // if ((rpm >= RPM_MIN_OPERATING) && (rpm <= RPM_MAX_OPERATING) && (t_mid_counter > 3U))
+            // {
+            //     if ((rpm_prev != 0U) &&
+            //         ((rpm >= (uint32_t)(18U * rpm_prev / 10U)) ||  /* +80% */
+            //          (rpm <= (uint32_t)( 8U * rpm_prev / 10U))))   /* -80% */
+            //     {
+            //         /* Probably spurious measurement, but within valid window */
+            //         rpm = rpm_prev;
+            //     }
+            //     rpm_prev = rpm;
+            // }
+            // else
+            // {
+            //     /* Outside valid measurement: use last valid measurement */
+            //     rpm = rpm_prev;
+            // }
+
+            if ((rpm >= RPM_MIN_OPERATING) && (rpm <= RPM_MAX_OPERATING) && (t_mid_counter > 3U))
+            {
+                /* Valid RPM range and enough samples collected */
+                
+                if (rpm_prev == 0U)
+                {
+                    /* FIRST VALID MEASUREMENT after motor start or reset */
+                    /* Accept unconditionally - no previous reference to compare */
+                    rpm_prev = rpm;
+                }
+                else
+                {
+                    /* SUBSEQUENT MEASUREMENTS - Apply variation check */
+                    
+                    /* Calculate upper and lower bounds (±80%) */
+                    uint32_t upper_bound = (uint32_t)(18U * rpm_prev / 10U);  /* +80% */
+                    uint32_t lower_bound = (uint32_t)( 8U * rpm_prev / 10U);  /* -20% */
+                    
+                    if ((rpm > upper_bound) || (rpm < lower_bound))
+                    {
+                        /* Variation too large - probably spurious measurement */
+                        /* Use last valid RPM instead of rejecting completely */
+                        rpm = rpm_prev;
+                    }
+                    else
+                    {
+                        /* Variation is acceptable - update reference */
+                        rpm_prev = rpm;
+                    }
+                }
+            }
+            else
+            {
+                /* Outside valid measurement range or not enough samples */
+                /* Use last valid measurement (or 0 if no valid measurement yet) */
+                rpm = rpm_prev;
+            }
 
             /* Update global RPM value (read by main loop) */
             g_rpm_value = rpm;

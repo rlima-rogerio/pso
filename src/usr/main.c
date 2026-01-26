@@ -58,7 +58,7 @@
 
   #define PWM_PROFILE_TRAPEZOID_SELECTED       /* IMPLEMENTED */
 //#define PWM_PROFILE_LINEAR_SELECTED          /* IMPLEMENTED */
-//#define PWM_PROFILE_SINGLE_STEP_SELECTED    /* IMPLEMENTED */
+// #define PWM_PROFILE_SINGLE_STEP_SELECTED    /* IMPLEMENTED */
 // #define PWM_PROFILE_MULTI_STEP_SELECTED     /* IMPLEMENTED */
 
 // #define PWM_PROFILE_CUSTOM_SELECTED          /* NOT IMPLEMENTED */
@@ -81,6 +81,7 @@ extern uint8_t pwm_throttle;                    // PWM throttle value
 extern uint8_t fix_rpm_start_acq;               // Fixed RPM acquisition start flag
 extern uint32_t g_pulse_diff;                   // Pulse difference for RPM calculation
 extern uint8_t g_pwm_value;                     // Global PWM duty cycle value
+extern bool g_rpm_reset;                        // RPM reset flag
 
 /*******************************************************************************
  * GLOBAL VARIABLES
@@ -163,21 +164,21 @@ int main(void)
 #elif defined(PWM_PROFILE_SINGLE_STEP_SELECTED)
     /* Configure custom step profile */
     step_config = (step_config_t){
-        .step_interval_ms = 5000, /* Time between step changes (5 seconds) */
+        .step_interval_ms = 3000, /* Time between step changes (5 seconds) */
         .num_steps = 3,           /* Number of steps in the sequence */
-        .steps = {0, 60, 0},      /* Step values (0-100%) */
+        .steps = {0, 50, 0},      /* Step values (0-100%) */
         .cycles = 1,              /* Number of cycles to repeat */
         .ping_pong = false        /* Ping-pong (forward then reverse) if true */
     };
 #elif defined(PWM_PROFILE_TRAPEZOID_SELECTED)
     /* Configure custom trapezoidal profile */
     trapezoid_config = (trapezoid_config_t){
-        .duration_ms = 15000,                   // 20 seconds total duration
-        .ramp_up_ms = 6000,                     // 5 seconds ramp up
+        .duration_ms = 9000,                   // 20 seconds total duration
+        .ramp_up_ms = 3000,                     // 5 seconds ramp up
         .hold_ms = 3000,                       // 10 seconds hold at maximum
-        .ramp_down_ms = 6000,                   // 5 seconds ramp down
+        .ramp_down_ms = 3000,                   // 5 seconds ramp down
         .min_value = 0,                         // Minimum 0% duty cycle
-        .max_value = 50,                       // Maximum 100% duty cycle
+        .max_value = 30,                       // Maximum 100% duty cycle
         .cycles = 2,                            // Repeat 2 times
         .auto_repeat = false                    // No auto-repeat
     };
@@ -401,6 +402,9 @@ static sys_state_t state_init(void)
     /* Reset profile start time */
     g_profile_start_time = 0U;    
 
+    /* Reset RPM computation */
+    g_rpm_reset = true;
+
     /* Configure timing rates */
     timing_configure(RATE_1000_HZ, 0);          // Main loop at 1 kHz
     
@@ -498,13 +502,17 @@ static sys_state_t state_processing(void)
     
 #ifdef RPM_EDGE_PERIOD_METHOD
     /* Get RPM directly from ISR calculation (period-based) */
-    current_rpm = rpm_get_value();
+    // current_rpm = rpm_get_value();
     
+    // current_rpm = rpm_get_filtered();
+    
+    //    g_scaled_rpm = rpm_get_filtered();
+
     // (void)current_rpm; /* RPM is already filtered/updated inside the ISR */
-    if (rpm_is_stopped())
-        g_scaled_rpm = 0;
-    else
-        g_scaled_rpm = g_rpm_value;//rpm_get_filtered();
+   if (rpm_is_stopped())
+       g_scaled_rpm = 0;
+   else
+       g_scaled_rpm = rpm_get_filtered();
 
 #else /* RPM_EDGE_COUNT_METHOD */
 /* Get raw RPM count and calculate scaled RPM */
