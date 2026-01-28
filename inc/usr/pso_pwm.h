@@ -28,6 +28,7 @@ typedef struct {
     uint32_t ramp_up_ms;       /* Ramp up time in ms */
     uint32_t hold_ms;          /* Hold time at max in ms */
     uint32_t ramp_down_ms;     /* Ramp down time in ms */
+    uint32_t coastdown_ms;     /* Coast down time in ms */
     uint8_t  min_value;        /* Minimum PWM value (0-100%) */
     uint8_t  max_value;        /* Maximum PWM value (0-100%) */
     uint8_t  cycles;           /* Number of cycles to repeat (0 = infinite) */

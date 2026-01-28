@@ -196,13 +196,18 @@ uint8_t execute_trapezoid_profile(uint32_t elapsed_ms, const trapezoid_config_t*
         /* Hold phase: constant at maximum value */
         throttle = config->max_value;
     }
-    else {
+    else if (elapsed_ms < (config->ramp_up_ms + config->hold_ms + config->ramp_down_ms)) {
         /* Ramp down phase: linear decrease from max to min */
         uint32_t ramp_down_time = elapsed_ms - (config->ramp_up_ms + config->hold_ms);
-        if (ramp_down_time < config->ramp_down_ms) {
-            throttle = config->max_value - 
-                      (uint8_t)((ramp_down_time * (config->max_value - config->min_value)) / 
-                               config->ramp_down_ms);
+        throttle = config->max_value - 
+                  (uint8_t)((ramp_down_time * (config->max_value - config->min_value)) / 
+                           config->ramp_down_ms);
+    }
+    else {
+        /* Coast down phase: linear decrease from max to min */
+        uint32_t coastdown_time = elapsed_ms - (config->ramp_up_ms + config->hold_ms + config->ramp_down_ms);
+        if (coastdown_time < config->coastdown_ms) {
+            throttle = config->min_value;
         } else {
             throttle = config->min_value;
         }

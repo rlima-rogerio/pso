@@ -6,6 +6,8 @@ clear all;
 close all;
 clc;
 
+
+
 %% Input dialog box
 LOG_TEST_INFORMATION = true;
 
@@ -302,8 +304,14 @@ cd testdata
 
 %% Salvar dados em arquivo .mat
 fprintf('\nSalvando dados em %s...\n', OUTPUT_MAT);
-save(OUTPUT_MAT, 'data', 'packet_count', 'error_count', ...
+if LOG_TEST_INFORMATION
+    save(OUTPUT_MAT, 'data', 'packet_count', 'error_count', ...
      'total_time', 'avg_rate', 'test_information');
+else
+    save(OUTPUT_MAT, 'data', 'packet_count', 'error_count', ...
+         'total_time', 'avg_rate');
+end
+
 fprintf('Arquivo .mat salvo!\n');
 
 %% Salvar dados em arquivo .txt
