@@ -12,7 +12,8 @@ clc;
 LOG_TEST_INFORMATION = true;
 
 if LOG_TEST_INFORMATION
-    test_information = test_info();
+    % test_information = test_info();    % Graphic-based interface
+    test_information = test_info_text(); % Text-based interface
 end
 
 %% Configurações
