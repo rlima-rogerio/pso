@@ -9,7 +9,7 @@ clc;
 
 
 %% Input dialog box
-LOG_TEST_INFORMATION = true;
+LOG_TEST_INFORMATION = false;
 
 if LOG_TEST_INFORMATION
     % test_information = test_info();    % Graphic-based interface
@@ -200,7 +200,7 @@ try
                 throttle = packet_data(19);
                 
                 % Converter para unidades reais
-                current = current_raw / 1000.0;
+                current = (current_raw / 2.0) / 1000.0; % ADC esta fornecendo o dobro do valor esperado. Por isso a divisao por 2.
                 voltage = voltage_raw / 1000.0;
                 thrust = thrust_raw;% / 100.0;
                 power = voltage * current;
