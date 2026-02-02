@@ -74,7 +74,7 @@ uint16_t current_adc_to_ma(uint32_t adc_value)
      *   ADC = 2048 → 30015 mA (30.0 A)
      *   ADC = 4095 → 60000 mA (60.0 A)
      */
-    uint32_t current_ma = (adc_value * IMAX_MA) / ADC_MAX_VALUE;
+    uint32_t current_ma = (adc_value * IMAX_MA / 2U) / ADC_MAX_VALUE;
     
     return (uint16_t)current_ma;
 }
