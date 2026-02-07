@@ -39,43 +39,39 @@ uint16_t voltage_adc_to_mv(uint32_t adc_value)
 
 uint16_t current_adc_to_ma(uint32_t adc_value)
 {
-    if (adc_value > ADC_MAX_VALUE) {
+    /* Saturate ADC value */
+    if (adc_value > ADC_MAX_VALUE)
+    {
         adc_value = ADC_MAX_VALUE;
     }
-    
+
     /*
-     * Formula: I(mA) = (ADC × 60000) / 4095
-     * 
-     * INA169 Transfer Function:
-     *   Vout = (Is × Rs) × gm × RL
-     *   Vout = Is × (0.0005 × 0.001 × 110000)
-     *   Vout = Is × 0.055 [V/A]
-     * 
-     * Solving for Is:
-     *   Is = Vout / 0.055
-     * 
-     * Where: Vout = (ADC / 4095) × 3.3
-     * 
-     * Therefore:
-     *   Is = [(ADC / 4095) × 3.3] / 0.055
-     *   Is = (ADC × 3.3) / (4095 × 0.055)
-     *   Is = (ADC × 3.3) / 225.225
-     *   Is(A) = ADC × 0.014652
-     *   Is(mA) = ADC × 14.652
-     * 
-     * Or equivalently:
-     *   Is(mA) = (ADC × 60000) / 4095
-     * 
-     * Maximum current:
-     *   ADC = 4095 → 60000 mA (60.0 A)
-     * 
-     * Example values:
-     *   ADC = 682  → 10000 mA (10.0 A)
-     *   ADC = 2048 → 30015 mA (30.0 A)
-     *   ADC = 4095 → 60000 mA (60.0 A)
+     * Empirical conversion (calibrated in hardware):
+     *
+     * After reducing RL to 55 kΩ, measurements show:
+     *   Vout / I ≈ 48.7 mV/A
+     *
+     * This corresponds to:
+     *   I(mA) ≈ ADC × 16.6
+     *
+     * A small offset (~3.5 mV ≈ 4 ADC counts) is removed
+     * to improve low-current accuracy.
      */
-    uint32_t current_ma = (adc_value * IMAX_MA) / ADC_MAX_VALUE;
-    
+
+    /* Remove measured offset */
+    if (adc_value > ADC_CURRENT_OFFSET)
+    {
+        adc_value -= ADC_CURRENT_OFFSET;
+    }
+    else
+    {
+        adc_value = 0U;
+    }
+
+    /* Apply calibrated gain */
+    uint32_t current_ma =
+        (adc_value * CURRENT_MA_PER_COUNT) / CURRENT_SCALE_DIV;
+
     return (uint16_t)current_ma;
 }
 
