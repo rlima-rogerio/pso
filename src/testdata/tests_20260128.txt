@@ -1,7 +1,0 @@
-%% Tests
-% test_3S_Flier-80A_GT2826-04_Nylon-10x5E
-% test_4S_Flier-80A_GT2826-04_Nylon-10x5E
-% test_3S_Flier-80A_GT2826-04_Carbon-fiber-10x6
-% test_4S_Flier-80A_GT2826-04_Carbon-fiber-10x6
-% test_3S_Flier-80A_GT2826-04_Carbon-fiber-13x6.5
-% test_4S_Flier-80A_GT2826-04_Carbon-fiber-13x6.5

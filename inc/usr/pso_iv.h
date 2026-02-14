@@ -37,7 +37,7 @@
 #define RL_OHM               110000UL     /* Load resistor: 110 kΩ */
 #define INA169_GM            0.001f       /* Transconductance: 1000 μA/V */
 /* Empirical INA169 calibration (RL = 55k, measured) */
-#define CURRENT_MA_PER_COUNT   332U   /* 16.6 mA per ADC count (scaled ×10) */
+#define CURRENT_MA_PER_COUNT   166U   /* 16.6 mA per ADC count (scaled ×10) */
 #define CURRENT_SCALE_DIV      10U
 #define ADC_CURRENT_OFFSET     4U     /* Offset to remove (in ADC counts) */
 

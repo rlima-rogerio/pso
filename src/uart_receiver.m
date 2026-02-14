@@ -9,7 +9,7 @@ clc;
 
 
 %% Input dialog box
-LOG_TEST_INFORMATION = false;
+LOG_TEST_INFORMATION = true;
 
 if LOG_TEST_INFORMATION
     % test_information = test_info();    % Graphic-based interface

@@ -1,0 +1,11 @@
+Experimental tests performed on Feb 14, 2026.
+
+The tests were performed following the motor manufacturer recommendation, that's the reason all sorts of prop/motor/battery were not tried.
+
+Many generic carbon props were so unbalanced that wasn't possible to balancing them using enamel (nail paint). For such unbalanced props I recommend putting washers in the blade holding screws. 
+
+Tests with the Propdrive 4248  motor didn't follow the manufacture recommendation because using we don't have the props indicated for using with 4S battery.
+
+It seems that fixed props are better than the generic folding ones. Try to get more with the correct specification. Consider to buy a 5S battery if the weight and cost permit.
+
+
