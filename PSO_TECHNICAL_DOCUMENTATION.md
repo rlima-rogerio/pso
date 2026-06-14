@@ -34,7 +34,7 @@ The **Propulsion System Optimizer (PSO)** is a comprehensive embedded data acqui
 - ✅ **RPM Measurement**: Hardware edge-period measurement with 25ns resolution
 - ✅ **Voltage/Current Monitoring**: INA169-based current sensing (0-60A) + voltage divider (0-33.4V)
 - ✅ **Direct Physical Units**: Voltage in mV, Current in mA (no MATLAB scaling needed)
-- ✅ **PWM Motor Control**: Configurable profiles (trapezoid, linear, step, custom)
+- ✅ **PWM Motor Control**: Configurable profiles (trapezoid, linear, step, sine, exponential, custom)
 - ✅ **UART Streaming**: 115200 baud with CRC-16 validation
 - ✅ **SD Card Logging**: FatFS-based storage (optional)
 - ✅ **Debug Interface**: Hardware timing pins for oscilloscope analysis

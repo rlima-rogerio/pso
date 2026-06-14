@@ -145,6 +145,8 @@ ADC Buffers:    24 bytes (6ch × 2B × 2 ADCs)
 // #define PWM_PROFILE_TRAPEZOID_SELECTED
 #define PWM_PROFILE_LINEAR_SELECTED
 // #define PWM_PROFILE_STEP_SELECTED
+// #define PWM_PROFILE_SINE_SELECTED
+// #define PWM_PROFILE_EXPONENTIAL_SELECTED
 ```
 
 ---
@@ -392,39 +394,68 @@ P_motor = V_battery * I_motor;    % Watts
 ### Trapezoid Profile
 ```c
 trapezoid_config_t config = {
-    .start_position = 0,        // 0% initial
-    .peak_position = 80,        // 80% peak
-    .end_position = 0,          // 0% final
-    .ramp_up_ms = 3000,         // 3s ramp up
-    .hold_ms = 5000,            // 5s hold at peak
-    .ramp_down_ms = 2000,       // 2s ramp down
-    .update_rate_hz = 10        // 10 Hz updates
+    .duration_ms = 15000,
+    .ramp_up_ms = 5000,
+    .hold_ms = 2000,
+    .ramp_down_ms = 5000,
+    .coastdown_ms = 3000,
+    .min_value = 0,
+    .max_value = 100,
+    .cycles = 1,
+    .auto_repeat = false
 };
 pwm_set_trapezoid_config(&config);
-pwm_profile_start(PROFILE_TRAPEZOID);
 ```
 
 ### Linear Ramp Profile
 ```c
 linear_config_t config = {
-    .start_position = 0,        // 0% start
-    .end_position = 100,        // 100% end
-    .duration_ms = 10000,       // 10s duration
-    .update_rate_hz = 10        // 10 Hz updates
+    .duration_ms = 10000,
+    .start_value = 0,
+    .end_value = 100,
+    .cycles = 1,
+    .bidirectional = false,
+    .slew_rate = 0.0f
 };
 pwm_set_linear_config(&config);
-pwm_profile_start(PROFILE_LINEAR);
 ```
 
 ### Step Profile
 ```c
 step_config_t config = {
-    .positions = {0, 20, 40, 60, 80, 100},  // 6 steps
-    .durations_ms = {1000, 2000, 2000, 2000, 2000, 1000},
-    .num_steps = 6              // Total steps
+    .step_interval_ms = 2000,
+    .num_steps = 6,
+    .steps = {0, 20, 40, 60, 80, 100},
+    .cycles = 1,
+    .ping_pong = false
 };
 pwm_set_step_config(&config);
-pwm_profile_start(PROFILE_STEP);
+```
+
+### Sine Profile
+```c
+sine_config_t config = {
+    .duration_ms = 30000,
+    .amplitude = 30,
+    .offset = 50,
+    .period_ms = 5000,
+    .cycles = 6,
+    .phase_deg = -90.0f
+};
+pwm_set_sine_config(&config);
+```
+
+### Exponential Profile
+```c
+exponential_config_t config = {
+    .duration_ms = 15000,
+    .start_value = 0,
+    .end_value = 100,
+    .time_constant_ms = 3000.0f,
+    .cycles = 1,
+    .rise_fall = true
+};
+pwm_set_exponential_config(&config);
 ```
 
 ---

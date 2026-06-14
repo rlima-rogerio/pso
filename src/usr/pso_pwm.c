@@ -20,6 +20,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <string.h>
+#include <math.h>
 #include "gpio.h"
 #include "hw_memmap.h"
 #include "tm4c123gh6pm.h"
@@ -77,6 +78,26 @@ static const step_config_t default_step = {
     .ping_pong = false        /* Ping-pong (forward then reverse) if true */
 };
 
+/* Default sine profile: gentle oscillation around mid throttle. */
+static const sine_config_t default_sine = {
+    .duration_ms = 30000,
+    .amplitude = 30,
+    .offset = 50,
+    .period_ms = 5000,
+    .cycles = 6,
+    .phase_deg = -90.0f
+};
+
+/* Default exponential profile: smooth first-order rise to full throttle. */
+static const exponential_config_t default_exponential = {
+    .duration_ms = 15000,
+    .start_value = 0,
+    .end_value = 100,
+    .time_constant_ms = 3000.0f,
+    .cycles = 1,
+    .rise_fall = true
+};
+
 /*******************************************************************************
  * PWM TIMING CONSTANTS AND MACROS
  *
@@ -96,6 +117,23 @@ static const step_config_t default_step = {
 #define US_TO_COUNTS(us)            ((us) * 1000U / PWM_CLOCK_PERIOD_NS)  /* μs to timer counts */
 #define PWM_MIN_DUTY_CYCLE          US_TO_COUNTS(PWM_MIN_PULSE_WIDTH_US)  /* Min timer value */
 #define PWM_DUTY_FROM_POSITION(pos) ((400U * (pos)) + PWM_MIN_DUTY_CYCLE) /* Position→timer counts */
+#define PWM_TWO_PI                  6.28318530718f
+#define PWM_DEG_TO_RAD(deg)         ((deg) * 0.01745329252f)
+
+static uint8_t pwm_clamp_percent_float(float value)
+{
+    if (value <= 0.0f)
+    {
+        return 0U;
+    }
+
+    if (value >= 100.0f)
+    {
+        return 100U;
+    }
+
+    return (uint8_t)(value + 0.5f);
+}
 
 /*******************************************************************************
  * FUNCTION: set_pwm_position
@@ -377,6 +415,138 @@ uint8_t execute_step_profile(uint32_t elapsed_ms, const step_config_t* config)
 }
 
 /*******************************************************************************
+ * FUNCTION: execute_sine_profile
+ *
+ * DESCRIPTION:
+ *     Executes a sinusoidal throttle profile:
+ *
+ *         throttle = offset + amplitude * sin(2*pi*t/period + phase)
+ *
+ *     The output is clamped to the ESC-safe 0-100% range. If cycles is zero,
+ *     the waveform repeats indefinitely; otherwise execution completes after
+ *     the configured duration or after cycles * period_ms.
+ *******************************************************************************/
+uint8_t execute_sine_profile(uint32_t elapsed_ms, const sine_config_t* config)
+{
+    static uint8_t last_throttle = 0U;
+    uint32_t duration_ms;
+    float phase_rad;
+    float angle;
+    uint8_t throttle;
+
+    if ((config == 0) || (config->period_ms == 0U))
+    {
+        last_throttle = 0U;
+        return FUNCTION_COMPLETE;
+    }
+
+    duration_ms = config->duration_ms;
+    if ((duration_ms == 0U) && (config->cycles > 0U))
+    {
+        duration_ms = (uint32_t)config->cycles * config->period_ms;
+    }
+
+    if ((duration_ms > 0U) && (elapsed_ms >= duration_ms))
+    {
+        pwm_set_throttle(config->offset);
+        last_throttle = config->offset;
+        return FUNCTION_COMPLETE;
+    }
+
+    phase_rad = PWM_DEG_TO_RAD(config->phase_deg);
+    angle = (PWM_TWO_PI * ((float)(elapsed_ms % config->period_ms) /
+             (float)config->period_ms)) + phase_rad;
+
+    throttle = pwm_clamp_percent_float(
+        (float)config->offset + ((float)config->amplitude * sinf(angle)));
+
+    if (throttle != last_throttle)
+    {
+        pwm_set_throttle(throttle);
+        last_throttle = throttle;
+    }
+
+    g_pwm_value = throttle;
+
+    return FUNCTION_RUNNING;
+}
+
+/*******************************************************************************
+ * FUNCTION: execute_exponential_profile
+ *
+ * DESCRIPTION:
+ *     Executes a first-order exponential transition between start_value and
+ *     end_value:
+ *
+ *         throttle = end + (start - end) * exp(-t/tau)
+ *
+ *     The profile finishes at duration_ms and explicitly sets end_value. The
+ *     cycles field repeats the same transition back-to-back when cycles > 1;
+ *     cycles == 0 repeats indefinitely.
+ *******************************************************************************/
+uint8_t execute_exponential_profile(uint32_t elapsed_ms, const exponential_config_t* config)
+{
+    static uint8_t last_throttle = 0U;
+    uint32_t cycle_duration_ms;
+    uint32_t cycle_time_ms;
+    uint32_t total_duration_ms;
+    float tau_ms;
+    float start_value;
+    float end_value;
+    float throttle_f;
+    uint8_t throttle;
+
+    if ((config == 0) || (config->duration_ms == 0U))
+    {
+        last_throttle = 0U;
+        return FUNCTION_COMPLETE;
+    }
+
+    cycle_duration_ms = config->duration_ms;
+    total_duration_ms = cycle_duration_ms;
+    if (config->cycles > 1U)
+    {
+        total_duration_ms = cycle_duration_ms * (uint32_t)config->cycles;
+    }
+
+    if ((config->cycles != 0U) && (elapsed_ms >= total_duration_ms))
+    {
+        uint8_t final_throttle = config->rise_fall ? config->end_value : config->start_value;
+        pwm_set_throttle(final_throttle);
+        last_throttle = final_throttle;
+        return FUNCTION_COMPLETE;
+    }
+
+    cycle_time_ms = elapsed_ms % cycle_duration_ms;
+    tau_ms = (config->time_constant_ms > 0.0f) ?
+             config->time_constant_ms :
+             ((float)cycle_duration_ms / 3.0f);
+
+    start_value = (float)config->start_value;
+    end_value = (float)config->end_value;
+
+    if (!config->rise_fall)
+    {
+        start_value = (float)config->end_value;
+        end_value = (float)config->start_value;
+    }
+
+    throttle_f = end_value + ((start_value - end_value) *
+                 expf(-((float)cycle_time_ms / tau_ms)));
+    throttle = pwm_clamp_percent_float(throttle_f);
+
+    if (throttle != last_throttle)
+    {
+        pwm_set_throttle(throttle);
+        last_throttle = throttle;
+    }
+
+    g_pwm_value = throttle;
+
+    return FUNCTION_RUNNING;
+}
+
+/*******************************************************************************
  * FUNCTION: execute_custom_profile
  *
  * DESCRIPTION:
@@ -445,6 +615,22 @@ void pwm_set_step_config(const step_config_t* config)
     }
 }
 
+void pwm_set_sine_config(const sine_config_t* config)
+{
+    if (config && config->period_ms > 0U) {
+        memcpy(&current_config.sine, config, sizeof(sine_config_t));
+        selected_profile = PWM_PROFILE_SINE;
+    }
+}
+
+void pwm_set_exponential_config(const exponential_config_t* config)
+{
+    if (config && config->duration_ms > 0U) {
+        memcpy(&current_config.exponential, config, sizeof(exponential_config_t));
+        selected_profile = PWM_PROFILE_EXPONENTIAL;
+    }
+}
+
 /*******************************************************************************
  * PROFILE TEMPLATE FUNCTIONS
  *
@@ -471,6 +657,16 @@ const trapezoid_config_t* pwm_get_trapezoid_template_soft_start(void)
         .auto_repeat = false
     };
     return &template;
+}
+
+const sine_config_t* pwm_get_sine_template_soft_oscillation(void)
+{
+    return &default_sine;
+}
+
+const exponential_config_t* pwm_get_exponential_template_soft_start(void)
+{
+    return &default_exponential;
 }
 
 /*******************************************************************************
@@ -516,6 +712,12 @@ void pwm_profile_start(pwm_profile_t profile)
             break;
         case PWM_PROFILE_STEP:
             current_config.step = default_step;
+            break;
+        case PWM_PROFILE_SINE:
+            current_config.sine = default_sine;
+            break;
+        case PWM_PROFILE_EXPONENTIAL:
+            current_config.exponential = default_exponential;
             break;
         default:
             break;
@@ -575,8 +777,15 @@ const char* get_profile_name(pwm_profile_t profile)
         case PWM_PROFILE_LINEAR:    return "Linear";
         case PWM_PROFILE_STEP:      return "Step";
         case PWM_PROFILE_CUSTOM:    return "Custom";
+        case PWM_PROFILE_SINE:      return "Sine";
+        case PWM_PROFILE_EXPONENTIAL: return "Exponential";
         default:                    return "None";
     }
+}
+
+pwm_profile_t pwm_get_current_profile(void)
+{
+    return selected_profile;
 }
 
 /*******************************************************************************
@@ -635,5 +844,5 @@ void pwm_profile_init(void)
  *     - Add PID control integration
  *     - Implement profile saving/loading from flash
  *     - Add real-time parameter adjustment
- *     - Support for more complex waveforms (sinusoidal, exponential)
+ *     - Add closed-loop RPM/thrust profile targets
  *******************************************************************************/

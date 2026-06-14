@@ -60,10 +60,19 @@
 //#define PWM_PROFILE_LINEAR_SELECTED          /* IMPLEMENTED */
 // #define PWM_PROFILE_SINGLE_STEP_SELECTED    /* IMPLEMENTED */
 // #define PWM_PROFILE_MULTI_STEP_SELECTED     /* IMPLEMENTED */
+// #define PWM_PROFILE_SINE_SELECTED            /* IMPLEMENTED */
+// #define PWM_PROFILE_EXPONENTIAL_SELECTED     /* IMPLEMENTED */
+// #define PWM_PROFILE_CUSTOM_SELECTED          /* IMPLEMENTED as default trapezoid */
 
-// #define PWM_PROFILE_CUSTOM_SELECTED          /* NOT IMPLEMENTED */
-// #define PWM_PROFILE_SINE_SELECTED            /* NOT IMPLEMENTED */
-// #define PWM_PROFILE_EXPONENTIAL_SELECTED     /* NOT IMPLEMENTED */
+#if (defined(PWM_PROFILE_TRAPEZOID_SELECTED) + \
+     defined(PWM_PROFILE_LINEAR_SELECTED) + \
+     defined(PWM_PROFILE_SINGLE_STEP_SELECTED) + \
+     defined(PWM_PROFILE_MULTI_STEP_SELECTED) + \
+     defined(PWM_PROFILE_SINE_SELECTED) + \
+     defined(PWM_PROFILE_EXPONENTIAL_SELECTED) + \
+     defined(PWM_PROFILE_CUSTOM_SELECTED)) > 1
+    #error "Select only one PWM profile in main.c"
+#endif
 
 
 
@@ -95,6 +104,8 @@ uint32_t g_scaled_rpm;                          // Scaled RPM value
 static linear_config_t linear_config;        // Active linear profile configuration
 static step_config_t step_config;            // Active step profile configuration
 static trapezoid_config_t trapezoid_config;  // Active trapezoid profile configuration
+static sine_config_t sine_config;            // Active sine profile configuration
+static exponential_config_t exponential_config; // Active exponential profile configuration
 
 /*******************************************************************************
  * FUNCTION PROTOTYPES
@@ -181,6 +192,26 @@ int main(void)
         .max_value = 100,                       // Maximum 100% duty cycle
         .cycles = 2,                            // Repeat 2 times
         .auto_repeat = false                    // No auto-repeat
+    };
+#elif defined(PWM_PROFILE_SINE_SELECTED)
+    /* Configure sinusoidal throttle sweep around mid throttle. */
+    sine_config = (sine_config_t){
+        .duration_ms = 30000,                   // Total profile duration, [ms]
+        .amplitude = 30,                        // +/-30% around offset
+        .offset = 50,                           // Center throttle, [%]
+        .period_ms = 5000,                      // Sine period, [ms]
+        .cycles = 6,                            // Six oscillation cycles
+        .phase_deg = -90.0f                     // Start at offset - amplitude
+    };
+#elif defined(PWM_PROFILE_EXPONENTIAL_SELECTED)
+    /* Configure first-order exponential soft-start profile. */
+    exponential_config = (exponential_config_t){
+        .duration_ms = 15000,                   // Total transition duration, [ms]
+        .start_value = 0,                       // Start throttle, [%]
+        .end_value = 100,                       // Final throttle, [%]
+        .time_constant_ms = 3000.0f,            // Exponential time constant, [ms]
+        .cycles = 1,                            // Single transition
+        .rise_fall = true                       // true: start->end, false: end->start
     };
 #else
     /* No profile selected */   
@@ -386,6 +417,12 @@ static sys_state_t state_init(void)
 #if defined(PWM_PROFILE_TRAPEZOID_SELECTED)
     current_profile = PWM_PROFILE_TRAPEZOID;            // Default trapezoidal profile
     pwm_set_trapezoid_config(&trapezoid_config); // Configure active trapezoidal profile
+#elif defined(PWM_PROFILE_SINE_SELECTED)
+    current_profile = PWM_PROFILE_SINE;                 // Sinusoidal profile
+    pwm_set_sine_config(&sine_config);          // Configure active sine profile
+#elif defined(PWM_PROFILE_EXPONENTIAL_SELECTED)
+    current_profile = PWM_PROFILE_EXPONENTIAL;          // Exponential profile
+    pwm_set_exponential_config(&exponential_config); // Configure active exponential profile
 #elif defined(PWM_PROFILE_LINEAR_SELECTED)
     current_profile = PWM_PROFILE_LINEAR;               // Default linear profile   
     pwm_set_linear_config(&linear_config);      // Configure active linear profile
@@ -609,6 +646,14 @@ static sys_state_t state_pwm_control(void)
             {
                 profile_result = execute_step_profile(elapsed_ms, &step_config);
             }
+            break;
+
+        case PWM_PROFILE_SINE:
+            profile_result = execute_sine_profile(elapsed_ms, &sine_config);
+            break;
+
+        case PWM_PROFILE_EXPONENTIAL:
+            profile_result = execute_exponential_profile(elapsed_ms, &exponential_config);
             break;
             
         case PWM_PROFILE_CUSTOM:

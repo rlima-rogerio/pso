@@ -10,7 +10,7 @@ A real-time embedded data acquisition system for motor and propeller testing, bu
 
 - **Multi-Channel Data Acquisition**: 6-channel ADC sampling at 5 kHz
 - **Real-Time RPM Measurement**: Hardware edge-period capture with per-pulse updates and 100 ms timeout detection
-- **Flexible PWM Control**: Configurable profiles (trapezoid, linear, step sequences)
+- **Flexible PWM Control**: Configurable profiles (trapezoid, linear, step, sine, exponential)
 - **High-Speed Communication**: UART streaming at 115200 baud with CRC validation
 - **Debug Capabilities**: Hardware timing pins for oscilloscope analysis
 - **SD Card Logging**: Optional FatFS-based data storage
@@ -365,6 +365,8 @@ Profiles are configured at compile time in `main.c`:
 // #define PWM_PROFILE_TRAPEZOID_SELECTED
 #define PWM_PROFILE_LINEAR_SELECTED
 // #define PWM_PROFILE_STEP_SELECTED
+// #define PWM_PROFILE_SINE_SELECTED
+// #define PWM_PROFILE_EXPONENTIAL_SELECTED
 
 /* Configure profile parameters */
 linear_config_t linear_config = {

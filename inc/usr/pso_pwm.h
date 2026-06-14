@@ -86,16 +86,22 @@ uint8_t set_pwm_position(uint8_t pos);
 uint8_t execute_trapezoid_profile(uint32_t elapsed_ms, const trapezoid_config_t* config);
 uint8_t execute_linear_profile(uint32_t elapsed_ms, const linear_config_t* config);
 uint8_t execute_step_profile(uint32_t elapsed_ms, const step_config_t* config);
+uint8_t execute_sine_profile(uint32_t elapsed_ms, const sine_config_t* config);
+uint8_t execute_exponential_profile(uint32_t elapsed_ms, const exponential_config_t* config);
 uint8_t execute_custom_profile(uint32_t elapsed_ms);
 
 /* Configuration helpers */
 void pwm_set_trapezoid_config(const trapezoid_config_t* config);
 void pwm_set_linear_config(const linear_config_t* config);
 void pwm_set_step_config(const step_config_t* config);
+void pwm_set_sine_config(const sine_config_t* config);
+void pwm_set_exponential_config(const exponential_config_t* config);
 
 /* Profile templates (pre-configured common profiles) */
 const trapezoid_config_t* pwm_get_trapezoid_template_standard(void);
 const trapezoid_config_t* pwm_get_trapezoid_template_soft_start(void);
+const sine_config_t* pwm_get_sine_template_soft_oscillation(void);
+const exponential_config_t* pwm_get_exponential_template_soft_start(void);
 
 /* PWM Configuration */
 void pwm_profile_init(void);
@@ -110,6 +116,7 @@ uint8_t pwm_profile_is_running(void);
 void pwm_profile_start(pwm_profile_t profile);
 void pwm_profile_stop(void);
 uint8_t pwm_profile_execute(void);
+pwm_profile_t pwm_get_current_profile(void);
 
 /* Legacy hooks still called by Timer3A ISR for compatibility. */
 void increment(void);
