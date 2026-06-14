@@ -34,13 +34,14 @@
 #include "pso_init.h"
 #include "pso_system.h"
 #include "pso_led.h"
+#include "pso_timing.h"
 
 /*******************************************************************************
  * GLOBAL VARIABLE DEFINITIONS
  *******************************************************************************/
 
-/* LED toggle flag - set by Timer3A ISR every 100ms */
-g_led_toggle_flag = 0U;
+/* LED event flag - set by Timer3A ISR every 100ms and consumed by state code. */
+volatile uint8_t g_led_toggle_flag = 0U;
 
 /*******************************************************************************
  * FUNCTION: indicate_standby
@@ -72,6 +73,7 @@ void indicate_standby(void)
     /* Timer-synchronized toggle: toggles when ISR sets flag */
     if (g_led_toggle_flag)
     {
+        g_led_toggle_flag = 0U;
         led_blue_toggle();
     }
 
@@ -112,6 +114,7 @@ void indicate_streaming(void)
     /* Timer-synchronized toggle: toggles when ISR sets flag */
     if (g_led_toggle_flag)
     {
+        g_led_toggle_flag = 0U;
         led_green_toggle();
     }
 

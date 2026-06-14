@@ -72,6 +72,11 @@ uint16_t current_adc_to_ma(uint32_t adc_value)
     uint32_t current_ma =
         (adc_value * CURRENT_MA_PER_COUNT) / CURRENT_SCALE_DIV;
 
+    if (current_ma > IMAX_MA)
+    {
+        current_ma = IMAX_MA;
+    }
+
     return (uint16_t)current_ma;
 }
 
@@ -100,9 +105,18 @@ uint32_t current_ma_to_adc(uint16_t current_ma)
     }
     
     /*
-     * ADC = (I_mA × 4095) / 60000
+     * Inverse of current_adc_to_ma():
+     *   I(mA) = max(ADC - offset, 0) * CURRENT_MA_PER_COUNT / scale
+     *   ADC   = (I(mA) * scale / CURRENT_MA_PER_COUNT) + offset
      */
-    uint32_t adc_value = ((uint32_t)current_ma * ADC_MAX_VALUE) / IMAX_MA;
+    uint32_t adc_value =
+        (((uint32_t)current_ma * CURRENT_SCALE_DIV) / CURRENT_MA_PER_COUNT) +
+        ADC_CURRENT_OFFSET;
+
+    if (adc_value > ADC_MAX_VALUE)
+    {
+        adc_value = ADC_MAX_VALUE;
+    }
     
     return adc_value;
 }

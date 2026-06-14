@@ -32,6 +32,7 @@
 #include "hw_gpio.h"
 #include "pso_data.h"
 #include "pso_debug.h"
+#include "pso_timing.h"
 
 /*******************************************************************************
  * FUNCTION: debug_gpio_init

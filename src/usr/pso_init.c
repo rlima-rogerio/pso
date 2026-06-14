@@ -10,7 +10,7 @@
  *     - ADC0/1 configuration for 6-channel data acquisition
  *     - PWM configuration for motor control (50 Hz, 1-2ms pulse)
  *     - SPI0/2 configuration for SD card communication (400 kHz)
- *     - RPM measurement system (Timer3 + WTimer1 edge counting)
+ *     - RPM measurement system (Timer3 timeout + WTimer1 edge-period capture)
  *
  * DOCUMENTATION STYLE:
  *     - Technical and functional
@@ -352,7 +352,8 @@ void PSO_Timers()
  * DESCRIPTION:
  *     Configures ADC0 and ADC1 for 6-channel data acquisition at 5 kHz.
  *     Uses Sample Sequencer 1 with hardware averaging (4x).
- *     Timer-triggered conversions with interrupts on ADC0 only.
+ *     Timer-triggered conversions. ADC0 SS1 is the only interrupt source;
+ *     its ISR drains both ADC0 and ADC1 FIFOs to keep samples aligned.
  * 
  * PARAMETERS:
  *     None
@@ -378,7 +379,7 @@ void PSO_Timers()
  * 
  * NOTES:
  *     - PE0 and PE5 are configured but marked as DISCARD
- *     - Only ADC0 generates interrupts (ADC1 data polled)
+ *     - Only ADC0 generates interrupts (ADC1 data is drained by ADC0 ISR)
  *     - Coincident sampling between ADC0 and ADC1
  *******************************************************************************/
 void PSO_ADCConfig()
@@ -464,9 +465,10 @@ void PSO_ADCConfig()
     ADC0_ACTSS_R |= ADC_ACTSS_ASEN1;   /* Enable ADC0 SS1 */
     ADC1_ACTSS_R |= ADC_ACTSS_ASEN1;   /* Enable ADC1 SS1 */
     
-    /* Enable ADC interrupts in NVIC */
+    /* Enable only ADC0 SS1 interrupt in NVIC. ADC1 SS1 is intentionally
+     * drained by ADC0SS1IntHandler to avoid double-reading ADC1 FIFO.
+     */
     NVIC_EN0_R |= 0x8000;    /* ADC0SS1 = interrupt 31 (bit 15 in EN0) */
-    NVIC_EN2_R |= 0x0002;    /* ADC1SS1 = interrupt 65 (bit 2 in EN2) */
 }
 
 
@@ -475,8 +477,8 @@ void PSO_ADCConfig()
  * 
  * DESCRIPTION:
  *     Configures RPM measurement system using two timers:
- *     1. Timer3A: Periodic 100ms interrupt for RPM calculation
- *     2. WTimer1A: Edge counter on PC6 for pulse counting
+ *     1. Timer3A: Periodic 100ms interrupt for stopped-motor timeout
+ *     2. WTimer1A: Edge-time capture on PC6 for period-based RPM
  * 
  * PARAMETERS:
  *     None
@@ -487,14 +489,11 @@ void PSO_ADCConfig()
  * HARDWARE CONFIGURATION:
  *     - RPM Sensor Input: PC6 (WT1CCP0)
  *     - Timer3A: 100ms periodic interrupt (40MHz / 4,000,000 = 100ms)
- *     - WTimer1A: Edge counter mode, counts rising edges on PC6
- * 
- * RPM CALCULATION:
- *     RPM = (pulse_count * 60 * 1000) / (BLADE_NUMBER * measurement_period_ms)
+ *     - WTimer1A: Edge-time capture mode, captures both edges on PC6
  * 
  * NOTES:
- *     - WTimer1 configured in EDGE-COUNT mode (not CAPTURE mode)
- *     - Timer3 interrupt reads WTimer1 counter every 100ms
+ *     - WTimer1A interrupt calculates RPM from blade-pulse midpoint period
+ *     - Timer3A interrupt detects loss of edges and reports RPM = 0
  *     - PC6 has pull-up resistor enabled for open-collector sensors
  *******************************************************************************/
 void pso_rpm_config(void)
@@ -557,16 +556,11 @@ void pso_rpm_config(void)
     /* Configure as 32-bit wide timer */
     WTIMER1_CFG_R = 0x00000004;                     /* 32-bit wide timer (mesmo da versão funcional) */
     
-#ifdef RPM_EDGE_PERIOD_METHOD
-    /* CORREÇÃO CRÍTICA: Configurar modo CAPTURE com TACDIR */
+    /* Configure WTimer1A in capture-time mode, counting up. */
     WTIMER1_TAMR_R = TIMER_TAMR_TAMR_CAP | TIMER_TAMR_TACMR | TIMER_TAMR_TACDIR;
-#else /* RPM_EDGE_COUNT_METHOD */
-    /* Configure in EDGE-COUNT mode, count up */
-    WTIMER1_TAMR_R = TIMER_TAMR_TAMR_CAP | TIMER_TAMR_TACDIR; 
-#endif
 
     
-    /* Configure to capture on RISING edges */
+    /* Configure capture on both edges; the ISR infers edge polarity from PC6. */
     WTIMER1_CTL_R &= ~TIMER_CTL_TAEVENT_M;          /* Clear event bits */
     WTIMER1_CTL_R |= TIMER_CTL_TAEVENT_BOTH;         /* Capture on both edges */ 
     //WTIMER1_CTL_R |= TIMER_CTL_TAEVENT_POS;         /* Capture on rising edge */
@@ -580,23 +574,14 @@ void pso_rpm_config(void)
     /* Clear capture event interrupt */
     WTIMER1_ICR_R = TIMER_ICR_CAECINT;                  
 
-#ifdef RPM_EDGE_PERIOD_METHOD   
     /* Enable capture interrupt */
     WTIMER1_IMR_R |= TIMER_IMR_CAEIM;               /* Enable capture event interrupt */
-#else /* RPM_EDGE_COUNT_METHOD */
-    /* Disable capture interrupt - using Timer3A for reading */
-    WTIMER1_IMR_R = 0;//&= ~TIMER_IMR_CAEIM;              /* Disable capture event interrupt */
-#endif
     
     /* Enable Wide Timer1A */
     WTIMER1_CTL_R |= TIMER_CTL_TAEN;
     
-#ifdef RPM_EDGE_PERIOD_METHOD
     /* Enable NVIC - WTimer1A is on IRQ 96 */
-    NVIC_EN3_R |= (1 << 0);  // Only in the period method!
-#else
-    /* NVIC remains disabled in edge count method */
-#endif
+    NVIC_EN3_R |= (1 << 0);
 
     /**************************************************************************
      * DEBUG: Configure test pins for verification

@@ -40,11 +40,11 @@
  *       and declared here as extern in pso_uart.h.
  *******************************************************************************/
 
-/* Pointer to UART0 receive data structure */
-uart_raw_data_t* g_uart0_data;
+/* UART0 receive data structure used by UART0IntHandler. */
+uart_raw_data_t g_uart0_data = {0};
 
-/* Pointer to UART transmit buffer */
-uint8_t* g_tx_buffer_uart;
+/* Legacy single-byte transmit scratch value. */
+uint8_t g_tx_buffer_uart = 0U;
 
 /*******************************************************************************
  * FUNCTION: uartBatchWrite
@@ -83,15 +83,19 @@ uint8_t* g_tx_buffer_uart;
  *     uint8_t status = uartBatchWrite(UART0_BASE, data_buffer, 4);
  *
  * NOTES:
- *     - Currently always returns success (returnval not properly set)
+ *     - Returns 1 on success and 0 for invalid input
  *     - Consider adding timeout mechanism to prevent infinite blocking
  *     - Buffer data type is uint16_t* but treats as bytes - ensure proper casting
  *     - For non-blocking operation, implement with interrupts or DMA
  *******************************************************************************/
 uint8_t uartBatchWrite(uint32_t ui32Base, uint16_t* txBuffer, const uint8_t bytesToWrite)
 {
-    static uint16_t i;          /* Loop counter (static for potential reuse) */
-    static uint8_t returnval;   /* Return value (currently not properly set) */
+    uint16_t i;
+
+    if ((txBuffer == 0) || (bytesToWrite == 0U))
+    {
+        return 0U;
+    }
 
     /* Transmit each byte in sequence */
     for (i = 0U; i < bytesToWrite; i++)
@@ -105,22 +109,19 @@ uint8_t uartBatchWrite(uint32_t ui32Base, uint16_t* txBuffer, const uint8_t byte
         }
         
         /* 2. Write byte to UART Data Register (triggers transmission) */
-        HWREG(ui32Base + UART_O_DR) = txBuffer[i];
+        HWREG(ui32Base + UART_O_DR) = (uint8_t)(txBuffer[i] & 0x00FFU);
     }
 
-    /* NOTE: returnval is not set in current implementation - always returns */
-    /* uninitialized static value (0 on first call, then previous value) */
-    return returnval;
+    return 1U;
 }
 
 /*******************************************************************************
  * MODULE NOTES AND RECOMMENDATIONS:
  *
  * CURRENT LIMITATIONS:
- *     1. No error checking on input parameters
+ *     1. No validation that ui32Base is a configured UART peripheral
  *     2. No timeout mechanism - may block indefinitely
- *     3. Return value not properly implemented
- *     4. uint16_t buffer with byte operations may cause alignment issues
+ *     3. uint16_t buffer is used as a byte array for legacy packet code
  *
  * RECOMMENDED IMPROVEMENTS:
  *

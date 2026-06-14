@@ -20,6 +20,8 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include "tm4c123gh6pm.h"
+#include "interrupt.h"
+#include "systick.h"
 #include "pso_timing.h"
 
 /*******************************************************************************

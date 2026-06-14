@@ -54,6 +54,7 @@ uint32_t timing_get_execution_count(void);
 float timing_get_actual_rate_hz(void);
 uint32_t timing_get_missed_deadlines(void);
 uint32_t get_system_time_us(void);
+uint32_t get_systick_ms(void);
 
 /* Utilitários */
 void delay_ms(uint32_t milliseconds);

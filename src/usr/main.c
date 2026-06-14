@@ -79,7 +79,6 @@ extern fifo_t g_fifo_ping;                      // Ping FIFO for data buffering
 extern fifo_t g_fifo_pong;                      // Pong FIFO for data buffering
 extern uint8_t pwm_throttle;                    // PWM throttle value
 extern uint8_t fix_rpm_start_acq;               // Fixed RPM acquisition start flag
-extern uint32_t g_pulse_diff;                   // Pulse difference for RPM calculation
 extern uint8_t g_pwm_value;                     // Global PWM duty cycle value
 extern bool g_rpm_reset;                        // RPM reset flag
 
@@ -497,31 +496,15 @@ static sys_state_t state_timing(void)
  ******************************************************************************/
 static sys_state_t state_processing(void)
 {
-    uint32_t current_rpm;
-    uint32_t edge_interval_us;
-    // uint32_t raw_rpm;
-    
-#ifdef RPM_EDGE_PERIOD_METHOD
-    /* Get RPM directly from ISR calculation (period-based) */
-    // current_rpm = rpm_get_value();
-    
-    // current_rpm = rpm_get_filtered();
-    
-    //    g_scaled_rpm = rpm_get_filtered();
-
-    // (void)current_rpm; /* RPM is already filtered/updated inside the ISR */
-   if (rpm_is_stopped())
-       g_scaled_rpm = 0;
-   else
-       g_scaled_rpm = rpm_get_filtered();
-
-#else /* RPM_EDGE_COUNT_METHOD */
-/* Get raw RPM count and calculate scaled RPM */
-    // raw_rpm = rpm_get_raw_count();
-
-    g_scaled_rpm = rpm_calculate(g_pulse_diff, RPM_CALC_PERIOD_MS, BLADE_NUMBER);
-    // g_scaled_rpm = current_rpm;
-#endif
+    /* RPM is calculated in WTimer1AIntHandler and filtered in pso_rpm.c. */
+    if (rpm_is_stopped())
+    {
+        g_scaled_rpm = 0U;
+    }
+    else
+    {
+        g_scaled_rpm = rpm_get_filtered();
+    }
     
     /* ... rest of existing code ... */
     packet_data(&dp);

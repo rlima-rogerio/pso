@@ -108,12 +108,9 @@ ADC Buffers:    24 bytes (6ch × 2B × 2 ADCs)
 ```c
 #define BLADE_NUMBER            2U      // Pulses per revolution
 #define RPM_STOP_TIMEOUT_MS     2000U   // Motor stopped timeout (2s)
-#define MIN_EDGE_INTERVAL_US    100U    // Min period = noise filter
-#define MAX_EDGE_INTERVAL_MS    60000U  // Max period (60 seconds)
-#define RPM_FILTER_SAMPLES      4U      // Moving average size
-/* Select measurement method  */
-#define RPM_EDGE_COUNT_METHOD           // Edge counting (default) */
-// #define RPM_EDGE_PERIOD_METHOD          // Period measurement */
+#define RPM_HIGH_MIN_US         50U     // Minimum accepted pulse width
+#define RPM_FILTER_SAMPLES      1U      // Moving average size
+#define BLADE_DETECTION_LOGIC_INVERTED  // Current sensor polarity
 ```
 
 ### pso_iv.h (Voltage/Current Scaling) 
@@ -248,8 +245,8 @@ void WTimer1AIntHandler(void)
     period_us = period_ticks / 40;
     
     // 4. Validate period (100μs to 60s)
-    if (period_us >= MIN_EDGE_INTERVAL_US && 
-        period_us <= MAX_EDGE_INTERVAL_MS * 1000) {
+    if (period_us >= RPM_PERIOD_MIN_US &&
+        period_us <= RPM_PERIOD_MAX_US) {
         
         // 5. Calculate RPM instantly
         g_rpm_value = 60000000UL / (period_us * BLADE_NUMBER);
@@ -533,8 +530,8 @@ Power:
 | Priority | Interrupt | Handler | Frequency | Purpose |
 |----------|-----------|---------|-----------|---------|
 | **0** (Highest) | SysTick | SysTick_Handler | 1 kHz | System tick |
-| **1** | ADC0 SS1 | ADC0SS1IntHandler | 5 kHz | Voltage + accel |
-| **1** | ADC1 SS1 | ADC1SS1IntHandler | 5 kHz | Current + accel |
+| **1** | ADC0 SS1 | ADC0SS1IntHandler | 5 kHz | Drains ADC0 + ADC1 FIFOs |
+| **1** | ADC1 SS1 | ADC1SS1IntHandler | Disabled | Clears stale flags only |
 | **2** | WTimer1A | WTimer1AIntHandler | Variable | RPM edge capture |
 | **3** | Timer3A | Timer3AIntHandler | 10 Hz | RPM timeout |
 | **4** | UART0 RX | UART0IntHandler | Async | RX data |
@@ -560,7 +557,7 @@ Power:
 
 ## Build & Flash Commands
 
-### Code Composer Studio (GUI)
+### Code Composer Studio 12.8.1 (GUI)
 ```
 Project → Build All (Ctrl+B)
 Run → Debug (F11)

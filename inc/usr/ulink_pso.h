@@ -10,8 +10,8 @@
 #define ULINK_MSG_ID_151_CRC 141
 
 #define ULINK_MSG_ID_PSO_DATA 150
-#define ULINK_MSG_ID_PSO_DATA_LEN 14
-#define ULINK_MSG_ID_150_LEN 14
+#define ULINK_MSG_ID_PSO_DATA_LEN 17
+#define ULINK_MSG_ID_150_LEN 17
 
 #define ULINK_MSG_ID_PSO_DATA_CRC 5
 #define ULINK_MSG_ID_150_CRC 5
@@ -21,9 +21,9 @@ typedef struct {
     uint16_t index;         /* Frame index */
     uint16_t accel[3];      /* x, y, z vibration (raw ADC) */
     uint16_t rpm;           /* Revolutions per minute */
-    uint16_t i_motor;       /* Current (SCALED 0-65535) */
+    uint16_t i_motor;       /* Current in mA */
     uint16_t v_motor;       /* Voltage in mV */
-    uint16_t thrust;        /* Thrust (raw ADC) */
+    uint16_t thrust;        /* Thrust in mN */
     uint8_t throttle;       /* Throttle 0-100 */
 } ulink_pso_data_t;
 

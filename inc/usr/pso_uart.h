@@ -7,6 +7,8 @@
 #ifndef PSO_UART_H_
 #define PSO_UART_H_
 
+#include <stdint.h>
+
 /******************************************************************************
 *
 *  The following are defines for the UART register offsets.
@@ -36,5 +38,8 @@ typedef struct uart_raw_data_t
   uint8_t new_data;                       /* New data flag   */
 
 } uart_raw_data_t;
+
+extern uart_raw_data_t g_uart0_data;
+extern uint8_t g_tx_buffer_uart;
 
 #endif /* PSO_UART_H_ */

@@ -7,12 +7,12 @@
  *     Propeller Speed Optimizer (PSO) system. Handles real-time data
  *     acquisition, RPM calculation, and system timing.
  *
- *     Supports two RPM measurement methods selectable via compile-time directive:
- *       - RPM_EDGE_COUNT_METHOD: Counting method (default)
- *       - RPM_EDGE_PERIOD_METHOD: Period measurement method
+ *     RPM is measured with the edge-period method only. WTimer1A captures
+ *     both sensor edges on PC6/WT1CCP0, and Timer3A handles stopped-motor
+ *     timeout detection every 100 ms.
  *
  * AUTHOR:      Rogerio Lima
- * CONSOLIDATED: December 2025
+ * UPDATED:     June 2026
  *
  *******************************************************************************/
 
@@ -45,20 +45,9 @@
 #include "pso_rpm.h"
 
 /*******************************************************************************
- * COMPILE-TIME METHOD SELECTION
- ******************************************************************************/
-#if !defined(RPM_EDGE_COUNT_METHOD) && !defined(RPM_EDGE_PERIOD_METHOD)
-    #define RPM_EDGE_COUNT_METHOD  /* Default to edge counting */
-#endif
-
-#if defined(RPM_EDGE_COUNT_METHOD) && defined(RPM_EDGE_PERIOD_METHOD)
-    #error "Only one RPM measurement method can be defined!"
-#endif
-
-/*******************************************************************************
  * GLOBAL VARIABLES (External Declarations)
  *******************************************************************************/
-extern uint8_t g_led_toggle_flag;            /* Toggle LED flag */
+extern volatile uint8_t g_led_toggle_flag;   /* LED event flag */
 extern uart_raw_data_t g_uart0_data;         /* UART0 receive buffer */
 
 /*******************************************************************************
@@ -83,17 +72,6 @@ volatile uint32_t adc1_buffer[3];            /* ADC1 channel data buffer */
  * TIMING AND MEASUREMENT VARIABLES
  *******************************************************************************/
 uint32_t wt1cpp0_tav_buffer;                 /* Wide Timer 1 capture buffer */
-
-#ifdef RPM_EDGE_COUNT_METHOD
-/*-----------------------------------------------------------------------------
- * EDGE COUNT METHOD - VARIABLES
- *---------------------------------------------------------------------------*/
-extern uint32_t g_pulse_diff;                       /* Pulse difference for RPM calc */
-
-#else /* RPM_EDGE_PERIOD_METHOD */
-/*-----------------------------------------------------------------------------
- * EDGE PERIOD METHOD - VARIABLES
- *---------------------------------------------------------------------------*/
 extern uint32_t g_edge_interval_us;          /* Period between edges in μs */
 extern uint32_t g_last_edge_time_us;         /* Time of last edge in μs */
 extern uint32_t g_last_capture_value;        /* Last timer capture value */
@@ -101,9 +79,6 @@ extern uint32_t g_edge_valid_count;          /* Valid edges counter */
 extern uint32_t g_edge_timeout_counter;      /* Timeout for stopped motor */
 uint32_t g_period_us; // Debugging variable
 uint32_t g_period_ticks; // Debugging variable
-
-
-#endif /* RPM_EDGE_COUNT_METHOD / RPM_EDGE_PERIOD_METHOD */
 
 /*******************************************************************************
  * FUNCTION: UART0IntHandler
@@ -141,8 +116,10 @@ void UART0IntHandler(void)
     /* 2. Read all available characters from receive FIFO */
     while (UARTCharsAvail(UART0_BASE))
     {
-        /* Store character in buffer and increment index */
-        g_uart0_data.rx_buffer[g_uart0_data.rx_index++] = HWREG(UART0_BASE + UART_O_DR);
+        /* Store character in a circular buffer. */
+        g_uart0_data.rx_buffer[g_uart0_data.rx_index] =
+            (uint8_t)(HWREG(UART0_BASE + UART_O_DR) & 0xFFU);
+        g_uart0_data.rx_index = (uint8_t)((g_uart0_data.rx_index + 1U) % UART_MAX_BUFFER);
     }
 
     /* 3. Set flag to indicate new data is available */
@@ -173,137 +150,16 @@ void Timer0AIntHandler(void)
 }
 
 /*******************************************************************************
- * RPM MEASUREMENT ISRs - METHOD-DEPENDENT IMPLEMENTATION
+ * RPM MEASUREMENT ISRs - EDGE-PERIOD IMPLEMENTATION
  ******************************************************************************/
-
-#ifdef RPM_EDGE_COUNT_METHOD
-/*=============================================================================
- * EDGE COUNT METHOD - ISR IMPLEMENTATION
- *===========================================================================*/
-
-/*******************************************************************************
- * FUNCTION: WTimer1AIntHandler
- *
- * DESCRIPTION:
- *     Wide Timer 1A interrupt handler - ERROR HANDLER ONLY.
- *     This handler should NOT be called as WTimer1A interrupts are DISABLED
- *     in edge count mode. If triggered, indicates a configuration error.
- *
- * PARAMETERS:
- *     None
- *
- * RETURNS:
- *     void
- *
- * ERROR HANDLING:
- *     - Clears any spurious interrupt
- *     - Can be extended to set error flag/counter
- *
- * NOTES:
- *     - This is a safety handler only
- *     - Consider adding error logging if called
- *******************************************************************************/
-void WTimer1AIntHandler(void)
-{
-    /* Clear any spurious interrupt */
-    WTIMER1_ICR_R = TIMER_ICR_CAECINT;
-    
-    /* Optional: Add error handling if this gets called */
-    /* Example: g_wtimer1_error_count++; */
-}
-
-/*******************************************************************************
- * FUNCTION: Timer3AIntHandler (EDGE COUNT METHOD)
- *
- * DESCRIPTION:
- *     Timer3A interrupt handler - called every 100ms (10 Hz).
- *     Primary function is RPM calculation based on pulse counts from WTimer1A.
- *     Also handles periodic system tasks like PWM control and LED indication.
- *
- * PARAMETERS:
- *     None
- *
- * RETURNS:
- *     void
- *
- * RPM CALCULATION:
- *     Formula: RPM = (pulse_diff * 600) / BLADE_NUMBER
- *     Where:
- *       - pulse_diff = pulses counted in 100ms interval
- *       - BLADE_NUMBER = pulses per revolution
- *       - 600 = conversion factor (100ms → min: ×10 ×60)
- *
- * OPERATION:
- *     1. Clear timer interrupt flag
- *     2. Read current pulse count from WTimer1A
- *     3. Calculate pulse difference (handles 32-bit overflow)
- *     4. Store pulse difference for main loop RPM calculation
- *     5. Update last count reference
- *     6. Set flag indicating new RPM data available
- *     7. Execute periodic system functions
- *
- * NOTES:
- *     - Runs at 10Hz (100ms intervals)
- *     - Handles 32-bit counter overflow correctly
- *     - RPM calculation completed in main loop using g_pulse_diff
- *     - Toggles LED and debug pins for visual feedback
- *******************************************************************************/
-void Timer3AIntHandler(void)
-{
-    static uint32_t last_rpm_count = 0;  /* Previous pulse count */
-    uint32_t current_count;              /* Current pulse count */
-    uint32_t pulse_diff;                 /* Pulses in last 100ms */
-
-    /* 1. Clear the timer interrupt flag FIRST (critical) */
-    TIMER3_ICR_R |= TIMER_ICR_TATOCINT;
-
-    /* 2. Read current pulse count from Wide Timer 1A */
-    current_count = WTIMER1_TAV_R;
-
-    /* 3. Calculate pulse difference with 32-bit overflow handling */
-    if (current_count >= last_rpm_count)
-    {
-        /* Normal case: no counter overflow */
-        pulse_diff = current_count - last_rpm_count;
-    }
-    else
-    {
-        /* Counter overflow occurred (wrapped from 0xFFFFFFFF to 0) */
-        pulse_diff = (0xFFFFFFFF - last_rpm_count) + current_count + 1;
-    }
-
-    /* 4. Store pulse difference for main loop RPM calculation */
-    g_pulse_diff = pulse_diff;
-
-    /* 5. Update reference count for next calculation */
-    last_rpm_count = current_count;
-
-    /* 6. Set flag to indicate new RPM value is available */
-    g_timer_a3_scan_flag ^= 0xFF;  /* Toggle flag for main loop detection */
-
-    /* 7. Visual feedback: toggle LED indicator */
-    g_led_toggle_flag ^= 0xFF;
-
-    /* 8. Optional debug pin toggling (scope visualization) */
-    /* DEBUG_ADC_TOGGLE(); */   /* PD6 - ADC timing indicator */
-    /* DEBUG_STATE_TOGGLE(); */  /* PD7 - State machine indicator */
-
-    /* 9. Execute periodic PWM control function */
-    increment();  /* PWM duty cycle adjustment */
-}
-
-#else /* RPM_EDGE_PERIOD_METHOD */
-/*=============================================================================
- * EDGE PERIOD METHOD - ISR IMPLEMENTATION
- *===========================================================================*/
 
 /*******************************************************************************
  * FUNCTION: WTimer1AIntHandler (EDGE PERIOD METHOD)
  *
  * DESCRIPTION:
  *     Wide Timer 1A edge capture interrupt handler for RPM measurement.
- *     Triggered on each rising edge at PC6 (WT1CCP0).
- *     Calculates period between consecutive edges with 25ns resolution.
+ *     Triggered on both edges at PC6 (WT1CCP0). The handler computes each
+ *     blade-pulse midpoint and calculates RPM from consecutive midpoints.
  *
  * PARAMETERS:
  *     None
@@ -463,7 +319,7 @@ void Timer3AIntHandler(void)
     rpm_update_filter(g_rpm_value);
 
     /* Signal new RPM available */
-    g_rpm_ready_flag ^= 0xFF;
+    g_rpm_ready_flag = 1U;
 
     /* Update reference only on processed event */
     t_mid_prev = t_mid;
@@ -507,15 +363,12 @@ void WTimer1AIntHandler(void)
     static uint32_t t_fall = 0;      /* Timestamp of last falling edge */
     
     /* Midpoint Calculation */
-    static bool have_mid = false;         /* True after first valid midpoint (unused) */
     static uint32_t t_mid = 0;            /* Current midpoint timestamp */
     static uint32_t t_mid_prev = 0;       /* Previous midpoint timestamp */
     static uint32_t t_mid_counter = 0;    /* Count of valid midpoints processed */
     
     /* RPM Calculation State */
-    static uint32_t rpm = 0;              /* Calculated RPM value (unused) */
-    static uint32_t rpm_prev = 0;         /* Previous RPM value (unused) */
-    static uint32_t last_rpm = 0;         /* Last valid RPM for filtering (unused) */
+    static uint32_t rpm_prev = 0;         /* Previous accepted RPM value */
     static bool compute_rpm = false;      /* Flag to trigger RPM calculation */
     
     
@@ -536,9 +389,7 @@ void WTimer1AIntHandler(void)
         g_rpm_reset = false;
 
         /* Reset RPM values */
-        rpm = 0U;
         rpm_prev = 0U;
-        last_rpm = 0U;
 
         /* Reset edge detection flags */
         have_rising_edge = false;
@@ -549,7 +400,6 @@ void WTimer1AIntHandler(void)
         t_fall = 0U;
 
         /* Reset midpoint calculation */
-        have_mid = false;
         t_mid = 0U;
         t_mid_prev = 0U;
         t_mid_counter = 0U;
@@ -745,6 +595,15 @@ void WTimer1AIntHandler(void)
             const uint32_t dp_ticks = (uint32_t)(t_mid - t_mid_prev);
             const uint32_t dp_us = (dp_ticks + US_ROUND) / TICKS_PER_US;
 
+            g_period_ticks = w_high_ticks;
+            g_period_us = w_high_us;
+            g_edge_interval_us = dp_us;
+
+            if (dp_us == 0U)
+            {
+                return;
+            }
+
             /* ──────────────────────────────────────────────────────────
              * CALCULATE RPM
              * 
@@ -818,6 +677,8 @@ void WTimer1AIntHandler(void)
 
             /* Update moving average filter for noise reduction */
             rpm_update_filter(g_rpm_value);
+            g_edge_valid_count++;
+            g_rpm_ready_flag = 1U;
         }
     }
 }
@@ -847,8 +708,7 @@ void WTimer1AIntHandler(void)
  *     5. Toggle LED for visual feedback
  *
  * NOTES:
- *     - Simpler than edge count version
- *     - Only handles timeout and periodic tasks
+ *     - Handles timeout and periodic housekeeping only
  *     - RPM calculation moved to WTimer1A ISR
  *******************************************************************************/
 void Timer3AIntHandler(void)
@@ -865,20 +725,18 @@ void Timer3AIntHandler(void)
         /* No edges detected for timeout period - motor stopped */
         g_rpm_value = 0;
         g_edge_interval_us = 0;
-        g_rpm_ready_flag ^= 0xFF;  /* Signal RPM update (to 0) */
+        g_rpm_ready_flag = 1U;  /* Signal RPM update (to 0) */
     }
     
     /* 4. Execute periodic PWM control */
     increment();
     
     /* 5. Toggle LED for visual feedback */
-    g_led_toggle_flag ^= 0xFF;
+    g_led_toggle_flag = 1U;
     
     /* 6. Optional debug pin toggling */
     /* DEBUG_STATE_TOGGLE(); */
 }
-
-#endif /* RPM_EDGE_COUNT_METHOD / RPM_EDGE_PERIOD_METHOD */
 
 /*******************************************************************************
  * COMMON ISR HANDLERS (Independent of RPM Method)
@@ -1036,13 +894,12 @@ void ADC0SS1IntHandler(void)
  *******************************************************************************/
 void ADC1SS1IntHandler(void)
 {
-    /* 1. Acknowledge Sample Sequencer 1 interrupt FIRST */
+    /* ADC1 SS1 interrupts are not enabled in the current acquisition design.
+     * ADC0SS1IntHandler drains ADC1's FIFO after the shared timer trigger so
+     * both ADC modules remain time-aligned. If this handler ever runs because
+     * of a stale/pending flag, acknowledge it and leave the FIFO untouched.
+     */
     ADC1_ISC_R = ADC_ISC_IN1;
-
-    /* 2. Read 3-channel data from ADC1 FIFO */
-    adc1_buffer[0] = ADC1_SSFIFO1_R;  /* Ay acceleration */
-    adc1_buffer[1] = ADC1_SSFIFO1_R;  /* Az acceleration */
-    adc1_buffer[2] = ADC1_SSFIFO1_R;  /* Motor Current */
 }
 
 /*******************************************************************************
@@ -1057,11 +914,11 @@ void ADC1SS1IntHandler(void)
  * 
  * Priority 1 (High):
  *   - ADC0 SS1 (time-critical data acquisition)
- *   - ADC1 SS1 (time-critical data acquisition)
+ *   - ADC1 SS1 (not enabled; ADC1 FIFO is drained by ADC0 SS1)
  * 
  * Priority 2 (Medium):
  *   - WTimer1A (RPM edge capture - PERIOD METHOD ONLY)
- *   - Timer3A (RPM calculation or timeout detection)
+ *   - Timer3A (RPM timeout detection)
  * 
  * Priority 3 (Medium):
  *   - UART0 (command processing)
@@ -1070,19 +927,13 @@ void ADC1SS1IntHandler(void)
  *   - Other timers (system timing)
  * 
  * 
- * METHOD-SPECIFIC ISR BEHAVIOR:
- * 
- * EDGE COUNT METHOD:
- *   - WTimer1A: NO interrupt (polling-based counter)
- *   - Timer3A: Calculates RPM every 100ms
- *   - CPU load: Low (~0.01%)
- *   - Latency: 100ms fixed
- * 
- * EDGE PERIOD METHOD:
- *   - WTimer1A: Interrupt per edge, calculates RPM
+ * RPM ISR BEHAVIOR:
+ *
+ * Edge-period method:
+ *   - WTimer1A: Interrupt per edge, calculates RPM from pulse midpoints
  *   - Timer3A: Timeout detection only
- *   - CPU load: Variable (~0.5% @ 1000 RPM)
- *   - Latency: Instant (per edge)
+ *   - CPU load: Variable with blade-pulse frequency
+ *   - Latency: Per accepted blade pulse
  * 
  * 
  * SAFETY CONSIDERATIONS:

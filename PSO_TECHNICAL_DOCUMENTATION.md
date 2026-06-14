@@ -558,8 +558,8 @@ void WTimer1AIntHandler(void)
     period_us = period_ticks / 40;
     
     // 4. Validate period range (noise filter + timeout check)
-    if (period_us >= MIN_EDGE_INTERVAL_US && 
-        period_us <= MAX_EDGE_INTERVAL_MS * 1000) {
+    if (period_us >= RPM_PERIOD_MIN_US &&
+        period_us <= RPM_PERIOD_MAX_US) {
         
         // 5. Calculate RPM from period
         // Formula: RPM = 60,000,000 μs/min ÷ (period × blades)
@@ -622,9 +622,10 @@ void Timer3AIntHandler(void)
 /* pso_rpm.h */
 #define BLADE_NUMBER            2       // Pulses per revolution
 #define RPM_STOP_TIMEOUT_MS     2000    // 2 seconds timeout
-#define MIN_EDGE_INTERVAL_US    100     // Noise filter (100 μs)
-#define MAX_EDGE_INTERVAL_MS    60000   // Max period (60 seconds)
-#define RPM_FILTER_SAMPLES      4       // Moving average size
+#define RPM_HIGH_MIN_US         50      // Minimum accepted pulse width
+#define RPM_PERIOD_MIN_US       (60000000UL / (RPM_MAX_OPERATING * BLADE_NUMBER))
+#define RPM_PERIOD_MAX_US       (60000000UL / (RPM_MIN_OPERATING * BLADE_NUMBER))
+#define RPM_FILTER_SAMPLES      1       // Moving average size
 ```
 
 **Calculating Minimum RPM**:
@@ -1185,7 +1186,7 @@ PWM_CONTROL (execute motor profile)
 |----------|-----------|-------------|---------|
 | **0** | SysTick | SysTick_Handler | 1ms system tick |
 | **1** | ADC0 SS1 | ADC0SS1IntHandler | Acceleration + thrust + voltage |
-| **1** | ADC1 SS1 | ADC1SS1IntHandler | Acceleration + current |
+| **1** | ADC1 SS1 | ADC1SS1IntHandler | Disabled; ADC1 FIFO drained by ADC0 SS1 |
 | **2** | WTimer1A | WTimer1AIntHandler | RPM edge capture |
 | **3** | Timer3A | Timer3AIntHandler | RPM timeout check |
 | **4** | UART0 RX | UART0IntHandler | Receive commands |
@@ -1510,7 +1511,7 @@ Function Generator TTL Output → PC6 (WT1CCP0)
 **Problem**: RPM reads too low
 - ❌ `BLADE_NUMBER` too high
 - ❌ Missing edges (weak signal)
-- ❌ `MAX_EDGE_INTERVAL_MS` too restrictive
+- ❌ `RPM_PERIOD_MAX_US` too restrictive
 
 **Problem**: RPM not updating
 - ❌ WTimer1A interrupt not enabled
@@ -1617,9 +1618,9 @@ Function Generator TTL Output → PC6 (WT1CCP0)
 /* RPM Configuration (pso_rpm.h) */
 #define BLADE_NUMBER             2             // Pulses per revolution
 #define RPM_STOP_TIMEOUT_MS      2000          // 2 second timeout
-#define RPM_FILTER_SAMPLES       4             // Moving average size
-#define MIN_EDGE_INTERVAL_US     100           // Noise filter (100 μs)
-#define MAX_EDGE_INTERVAL_MS     60000         // Max period (60 seconds)
+#define RPM_FILTER_SAMPLES       1             // Moving average size
+#define RPM_HIGH_MIN_US          50            // Minimum accepted pulse width
+#define RPM_PERIOD_MAX_US        (60000000UL / (RPM_MIN_OPERATING * BLADE_NUMBER))
 
 /* UART Configuration */
 #define UART_BAUD_RATE           115200UL      // Baud rate

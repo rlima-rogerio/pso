@@ -129,7 +129,7 @@
 │  │  2. Scale & Convert (physical units)                                   │ │
 │  │           │                                                             │ │
 │  │           ▼                                                             │ │
-│  │  3. Calculate RPM (rpm_calculate())                                    │ │
+│  │  3. Read filtered RPM (edge-period ISR)                                │ │
 │  │           │                                                             │ │
 │  │           ▼                                                             │ │
 │  │  4. Pack Data (packet_data(), copy_data())                             │ │

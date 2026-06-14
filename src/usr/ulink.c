@@ -7,6 +7,7 @@
 #include "pso_rpm.h"
 #include "pso_iv.h"
 #include "pso_thrust.h"
+#include "pso_data.h"
 
 uint16_t uart_rx_buffer[ULINK_MAX_PACKET_LEN];
 uint16_t uart_tx_buffer[ULINK_MAX_PACKET_LEN];
@@ -80,21 +81,18 @@ int uart_read(){
 
 
 void create_message(uint8_t system_id, uint8_t component_id, uint16_t* msg, const ulink_pso_data_t* pso_data){
-	uint16_t checksum;
+	ulink_pso_data_t frame_data;
 
-	memcpy(&msg[6], pso_data, sizeof(ulink_pso_data_t));
+	(void)system_id;
+	(void)component_id;
 
-	msg[0] |= ULINK_STX;
-	msg[1] |= ULINK_MSG_ID_PSO_DATA_LEN;
-	msg[2] |= 0x23;
-	msg[3] |= system_id;
-	msg[4] |= component_id;
-	msg[5] |= ULINK_MSG_ID_PSO_DATA;
+	if ((msg == 0) || (pso_data == 0))
+	{
+		return;
+	}
 
-	checksum = create_checksum(&msg[0], ULINK_MSG_ID_PSO_DATA_LEN + ULINK_CORE_HEADER_LEN);
-	accumulate_checksum(ULINK_MSG_ID_PSO_DATA_CRC, &checksum);
-
-	msg[6 + ULINK_MSG_ID_PSO_DATA_LEN] = checksum;
+	frame_data = *pso_data;
+	copy_data(msg, &frame_data);
 
 }
 
@@ -144,7 +142,7 @@ void copy_data (uint16_t* uart_tx_buf, ulink_pso_data_t* dp)
 
 	dp->index = index;
 
-	memset(uart_tx_buf, 0, sizeof(uart_tx_buf));
+	memset(uart_tx_buf, 0, PACKET_LENGTH * sizeof(uart_tx_buf[0]));
 
 
 	uart_tx_buf[0] = ULINK_STX;
@@ -167,7 +165,7 @@ void copy_data (uint16_t* uart_tx_buf, ulink_pso_data_t* dp)
 	uart_tx_buf[17] = 0x00FF & (dp->thrust);
 	uart_tx_buf[18] = dp->throttle;
 
-	aux = create_checksum(uart_tx_buf, 18);
+	aux = create_checksum(uart_tx_buf, ULINK_MSG_ID_PSO_DATA_LEN + 1U);
 
 	uart_tx_buf[19] = 0x00FF & (aux >> 8);
 	uart_tx_buf[20] = 0x00FF & (aux);

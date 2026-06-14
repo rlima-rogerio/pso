@@ -9,7 +9,7 @@ A real-time embedded data acquisition system for motor and propeller testing, bu
 ## Features
 
 - **Multi-Channel Data Acquisition**: 6-channel ADC sampling at 5 kHz
-- **Real-Time RPM Measurement**: Hardware-based edge counting with 100ms resolution
+- **Real-Time RPM Measurement**: Hardware edge-period capture with per-pulse updates and 100 ms timeout detection
 - **Flexible PWM Control**: Configurable profiles (trapezoid, linear, step sequences)
 - **High-Speed Communication**: UART streaming at 115200 baud with CRC validation
 - **Debug Capabilities**: Hardware timing pins for oscilloscope analysis
@@ -70,7 +70,7 @@ Refer to the detailed pin assignment table below for connecting your sensors:
 ### Development Tools
 
 1. **Code Composer Studio (CCS)**
-   - Version: 12.x or earlier (Eclipse-based IDE)
+   - Version: 12.8.1 (Eclipse-based IDE)
    - Download: [CCS Download Page](https://www.ti.com/tool/CCSTUDIO)
    - Platform: Windows, Linux, or macOS
 
@@ -124,7 +124,7 @@ sudo udevadm control --reload-rules
 
 1. **Launch CCS**
    ```
-   Start → Code Composer Studio → CCS 12.x
+   Start → Code Composer Studio → CCS 12.8.1
    ```
 
 2. **Create/Select Workspace**
