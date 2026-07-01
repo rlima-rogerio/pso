@@ -18,6 +18,13 @@ end
 
 %% Configurações
 sys = computer;
+script_dir = fileparts(mfilename('fullpath'));
+if isempty(script_dir)
+    script_dir = pwd;
+end
+repo_root = fileparts(script_dir);
+testdata_root = fullfile(repo_root, "testdata");
+calibration_root = fullfile(repo_root, "calibration_data");
 
 switch sys
     case {'PCWIN64', 'PCWIN'}
@@ -37,15 +44,15 @@ CALIBRATION_MODE = false;
 dir = 'down'; % up or down
 
 if CALIBRATION_MODE
-    cd ../calibration_data;
+    if ~exist(calibration_root, "dir"), mkdir(calibration_root); end
     filename = sprintf("calibration_%s_%dg", dir, round(calibration_mass));
-    OUTPUT_MAT = sprintf("%s.mat", filename);
-    OUTPUT_TXT = sprintf("%s.txt", filename);
+    OUTPUT_MAT = fullfile(calibration_root, sprintf("%s.mat", filename));
+    OUTPUT_TXT = fullfile(calibration_root, sprintf("%s.txt", filename));
 else
     %% -------- OUTPUT FILES ----------    
-    out_dir = fullfile(pwd, "testdata");
-    if ~exist(out_dir, "dir"), mkdir(out_dir); end
     ts = datetime("now");
+    out_dir = fullfile(testdata_root, string(datestr(ts, "yyyy-mm-dd")));
+    if ~exist(out_dir, "dir"), mkdir(out_dir); end
     if exist('test_information')
         base = "test_" + ...
                 test_information.battery.num_cells + "S_" + ...
@@ -300,9 +307,6 @@ fprintf('Erros de checksum: %d\n', checksum_errors);
 fprintf('Tempo total: %.2f s\n', total_time);
 fprintf('Taxa média: %.1f pkt/s\n', avg_rate);
 
-% Entra no diretorio para salvar dados
-cd testdata
-
 %% Salvar dados em arquivo .mat
 fprintf('\nSalvando dados em %s...\n', OUTPUT_MAT);
 if LOG_TEST_INFORMATION
@@ -335,7 +339,8 @@ fprintf('Arquivo .txt salvo!\n');
 if CALIBRATION_MODE
     % Save .MAT file with only output strain gauge sampled data and probe mass.
     data_thrust = data.thrust;
-    save(sprintf("%s_reduced.mat",filename), 'data_thrust', 'calibration_mass');
+    save(fullfile(calibration_root, sprintf("%s_reduced.mat", filename)), ...
+         'data_thrust', 'calibration_mass');
 end
 
 
