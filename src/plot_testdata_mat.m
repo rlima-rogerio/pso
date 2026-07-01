@@ -6,14 +6,14 @@
 % MAT_FILE = "../testdata/2026-02-14/test_3S_Flier-80A_GT2826-04_Carbon-12x6.mat";
 % MAT_FILE = "../testdata/2026-02-14/test_3S_Flier-80A_GT2826-04_Nylon-10x5E.mat";
 % MAT_FILE = "../testdata/2026-02-14/test_3S_Flier-80A_GT2826-04_Nylon-11x5.5.mat";
-MAT_FILE = "../testdata/2026-02-14/test_3S_Flier-80A_Propdrive-42-48_Carbon-12x6.5-Aeronaut-CAM.mat";
+% MAT_FILE = "../testdata/2026-02-14/test_3S_Flier-80A_Propdrive-42-48_Carbon-12x6.5-Aeronaut-CAM.mat";
 % MAT_FILE = "../testdata/2026-02-14/test_4S_Flier-80A_GT2826-04_Nylon-10x5E.mat";
 % MAT_FILE = "../testdata/2026-02-14/test_4S_Flier-80A_GT2826-04_Nylon-11x5.5.mat";
 % MAT_FILE = "../testdata/2026-02-14/test_4S_Flier-80A_Propdrive-42-48_Carbon-12x6.5-Aeronaut-CAM.mat";
 % MAT_FILE = "../testdata/2026-02-14/test_4S_Flier-80A_Propdrive-42-48_Carbon-13x6.5-Aeronaut-CAM.mat";
 % MAT_FILE = "../testdata/2026-02-14/test_4S_Flier-80A_Propdrive-42-48_Carbon-15x10-Carbon.mat";
 % MAT_FILE = "../testdata/2026-04-11/test_4S_Flier-80A_Propdrive-42-48_Glass-Fiber-Nylon GEMFAN-15x8.mat";
-% MAT_FILE = "../testdata/2026-04-11/test_4S_Flier-80A_Propdrive-42-48_Glass-Fiber Nylon GEMFAN-15x8.mat";
+MAT_FILE = "../testdata/2026-04-11/test_4S_Flier-80A_Propdrive-42-48_Glass-Fiber Nylon GEMFAN-15x8.mat";
 
 
 clearvars -except MAT_FILE;
